@@ -41,10 +41,12 @@ env/
 *.db
 *.sqlite
 *.sqlite3
+documents.db
 
 # ChromaDB
 chroma_db/
 *.chroma
+**/chroma_db/
 
 # Logs
 *.log
@@ -65,3 +67,15 @@ tmp/
 # Model cache (optional - can be large)
 .cache/
 models/
+.pytest_cache/
+
+# Deployment helper scripts (keep main ones, remove local helpers)
+push_to_github.sh
+deploy.sh
+
+# Example/test files
+example_document.txt
+
+# Local documentation (keep main README)
+README_DEPLOY.md
+DATABASE_GUIDE.md
