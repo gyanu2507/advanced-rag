@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 -m uvicorn backend:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: API_URL
+        value: https://backend.onrender.com
+    healthCheckPath: /health
+
+  - type: web
+    name: frontend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: API_URL
+        fromService:
+          name: backend
+          type: web
+          property: host
+
