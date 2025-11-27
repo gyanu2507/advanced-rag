@@ -206,15 +206,17 @@ The application uses SQLite for data persistence:
 
 ## 🚀 Deployment
 
-### Quick Deploy Options
+### 🆓 Free Deployment Options
 
-#### Render.com (Recommended)
-1. Push to GitHub
-2. Go to [render.com](https://render.com)
-3. Create Web Service → Connect repo
-4. Deploy! (See `QUICK_DEPLOY.md` for details)
+#### Option 1: Streamlit Cloud + Railway (Recommended - 100% Free)
 
-#### Railway
+**Frontend (Streamlit Cloud - Free):**
+1. Go to [share.streamlit.io](https://share.streamlit.io)
+2. Connect GitHub repo
+3. Deploy `app.py`
+4. Set env: `API_URL=https://your-backend.railway.app`
+
+**Backend (Railway - Free Tier):**
 ```bash
 npm i -g @railway/cli
 railway login
@@ -222,12 +224,24 @@ railway init
 railway up
 ```
 
-#### Docker
+#### Option 2: Fly.io (Free Tier)
+```bash
+fly auth login
+fly launch
+fly deploy
+```
+
+#### Option 3: Hugging Face Spaces (Free)
+- Deploy Streamlit app on [Hugging Face Spaces](https://huggingface.co/spaces)
+- Connect GitHub repo
+- Auto-deploys!
+
+#### Option 4: Docker (Any Platform)
 ```bash
 docker-compose up -d
 ```
 
-See `DEPLOYMENT.md` for detailed deployment instructions.
+**📖 See `FREE_DEPLOYMENT.md` for all free deployment options!**
 
 ## 📊 API Endpoints
 
