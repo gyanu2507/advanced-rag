@@ -502,8 +502,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# API URL
-API_URL = os.getenv("API_URL", "http://localhost:8000")
+# API URL - Can be set via environment variable (for deployment)
+API_URL = os.getenv("API_URL", os.getenv("HF_API_URL", "http://localhost:8000"))
 
 # Initialize session state
 if "messages" not in st.session_state:
