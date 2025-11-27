@@ -208,21 +208,31 @@ The application uses SQLite for data persistence:
 
 ### 🆓 Free Deployment Options
 
-#### Option 1: Streamlit Cloud + Railway (Recommended - 100% Free)
+#### Option 1: Railway (Recommended - 100% Free Tier)
 
-**Frontend (Streamlit Cloud - Free):**
-1. Go to [share.streamlit.io](https://share.streamlit.io)
-2. Connect GitHub repo
-3. Deploy `app.py`
-4. Set env: `API_URL=https://your-backend.railway.app`
-
-**Backend (Railway - Free Tier):**
+**Quick Deploy:**
 ```bash
+# Install Railway CLI
 npm i -g @railway/cli
+
+# Login and deploy
 railway login
 railway init
 railway up
 ```
+
+**Or use the deployment script:**
+```bash
+chmod +x deploy_railway.sh
+./deploy_railway.sh
+```
+
+**📖 See `RAILWAY_DEPLOY.md` for complete guide!**
+
+**Alternative: Streamlit Cloud (Frontend) + Railway (Backend)**
+- Frontend: [share.streamlit.io](https://share.streamlit.io) - Connect GitHub repo
+- Backend: Railway (as above)
+- Set env: `API_URL=https://your-backend.railway.app`
 
 #### Option 2: Fly.io (Free Tier)
 ```bash
