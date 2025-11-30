@@ -514,10 +514,10 @@ Provide a detailed and accurate answer based on the context provided:"""
             else:
                 # Standard search (fallback)
                 if document_ids and len(document_ids) > 0:
-                all_docs = self.vectorstore.similarity_search(question, k=20)
-                docs = [doc for doc in all_docs if doc.metadata.get("document_id") in document_ids][:5]
-            else:
-                docs = self.vectorstore.similarity_search(question, k=5)
+                    all_docs = self.vectorstore.similarity_search(question, k=20)
+                    docs = [doc for doc in all_docs if doc.metadata.get("document_id") in document_ids][:5]
+                else:
+                    docs = self.vectorstore.similarity_search(question, k=5)
             
             if not docs:
                 if document_ids:
@@ -546,9 +546,9 @@ Provide a detailed and accurate answer based on the context provided:"""
                                 results = self._hybrid_search(query, k=20, document_ids=document_ids)
                                 return [doc for doc, _ in results]
                             else:
-                            all_docs = self.vectorstore.similarity_search(query, k=20)
-                            filtered = [doc for doc in all_docs if doc.metadata.get("document_id") in document_ids]
-                            return filtered[:5]
+                                all_docs = self.vectorstore.similarity_search(query, k=20)
+                                filtered = [doc for doc in all_docs if doc.metadata.get("document_id") in document_ids]
+                                return filtered[:5]
                         
                         # Temporarily replace retriever
                         original_retriever = self.qa_chain.retriever
