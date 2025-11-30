@@ -635,9 +635,22 @@ with st.sidebar:
     if "user_id_input" not in st.session_state:
         st.session_state.user_id_input = st.session_state.user_id
     
+    # Check if we need to generate a new ID (from previous button click)
+    if "generate_new_id" in st.session_state and st.session_state.generate_new_id:
+        import uuid
+        new_id = str(uuid.uuid4())[:8]
+        st.session_state.user_id = new_id
+        st.session_state.messages = []
+        st.session_state.document_uploaded = False
+        st.session_state.generate_new_id = False
+        # Use rerun with args to update the widget value
+        st.rerun()
+    
     # User ID Input - Full width
+    # Use value parameter to set initial/default value
     user_id_input = st.text_input(
         "User ID",
+        value=st.session_state.user_id,
         key="user_id_input",
         help="Each user has isolated document storage",
         label_visibility="visible"
@@ -645,12 +658,7 @@ with st.sidebar:
     
     # Generate New ID Button - Below input
     if st.button("🔄 Generate New User ID", use_container_width=True, key="btn_new_id"):
-        import uuid
-        new_id = str(uuid.uuid4())[:8]
-        st.session_state.user_id = new_id
-        st.session_state.user_id_input = new_id
-        st.session_state.messages = []
-        st.session_state.document_uploaded = False
+        st.session_state.generate_new_id = True
         st.rerun()
     
     # Sync: Update session state if user manually changed the input
