@@ -361,8 +361,15 @@ Provide a detailed and accurate answer based on the context provided:"""
         
         # Filter by document_ids if provided
         if document_ids:
-            results = [(doc, score) for doc, score in results 
-                      if doc.metadata.get("document_id") in document_ids]
+            # Convert document_ids to strings for comparison (metadata might be string or int)
+            doc_ids_str = [str(did) for did in document_ids]
+            filtered_results = []
+            for doc, score in results:
+                doc_id = doc.metadata.get("document_id")
+                # Check both string and int versions
+                if doc_id is not None and (str(doc_id) in doc_ids_str or doc_id in document_ids):
+                    filtered_results.append((doc, score))
+            results = filtered_results
         
         # Sort by combined score and return top k
         results.sort(key=lambda x: x[1], reverse=True)
@@ -510,14 +517,49 @@ Provide a detailed and accurate answer based on the context provided:"""
                             all_results.append((doc, score))
                             seen_contents.add(doc_key)
                 
+                # If no results with filtering, try without filtering (fallback)
+                if not all_results and document_ids:
+                    print(f"⚠️ No results with document filter, trying without filter...")
+                    for query_var in query_variations[:2]:  # Try fewer variations
+                        results = self._hybrid_search(query_var, k=20, document_ids=None)
+                        for doc, score in results:
+                            doc_key = doc.page_content[:100]
+                            if doc_key not in seen_contents:
+                                # Check if this doc matches our filter
+                                doc_id = doc.metadata.get("document_id")
+                                doc_ids_str = [str(did) for did in document_ids]
+                                if doc_id is not None and (str(doc_id) in doc_ids_str or doc_id in document_ids):
+                                    all_results.append((doc, score))
+                                    seen_contents.add(doc_key)
+                
                 # 4. Rerank results
                 docs = [doc for doc, _ in all_results[:15]]  # Get top 15 for reranking
-                docs = self._rerank_documents(enhanced_question, docs, top_k=5)
+                if docs:
+                    docs = self._rerank_documents(enhanced_question, docs, top_k=5)
+                else:
+                    # Last resort: try simple search without enhancements
+                    print(f"⚠️ Enhanced search returned no results, trying simple search...")
+                    if document_ids:
+                        doc_ids_str = [str(did) for did in document_ids]
+                        all_docs = self.vectorstore.similarity_search(question, k=50)
+                        docs = [doc for doc in all_docs 
+                               if doc.metadata.get("document_id") is not None and 
+                               (str(doc.metadata.get("document_id")) in doc_ids_str or 
+                                doc.metadata.get("document_id") in document_ids)][:5]
+                    else:
+                        docs = self.vectorstore.similarity_search(question, k=5)
             else:
                 # Standard search (fallback)
                 if document_ids and len(document_ids) > 0:
-                    all_docs = self.vectorstore.similarity_search(question, k=20)
-                    docs = [doc for doc in all_docs if doc.metadata.get("document_id") in document_ids][:5]
+                    doc_ids_str = [str(did) for did in document_ids]
+                    all_docs = self.vectorstore.similarity_search(question, k=50)  # Get more docs for filtering
+                    docs = []
+                    for doc in all_docs:
+                        doc_id = doc.metadata.get("document_id")
+                        if doc_id is not None and (str(doc_id) in doc_ids_str or doc_id in document_ids):
+                            docs.append(doc)
+                            if len(docs) >= 5:
+                                break
                 else:
                     docs = self.vectorstore.similarity_search(question, k=5)
             
@@ -552,9 +594,16 @@ Provide a detailed and accurate answer based on the context provided:"""
                                 results = self._hybrid_search(query, k=20, document_ids=document_ids)
                                 return [doc for doc, _ in results]
                             else:
-                                all_docs = self.vectorstore.similarity_search(query, k=20)
-                                filtered = [doc for doc in all_docs if doc.metadata.get("document_id") in document_ids]
-                                return filtered[:5]
+                                doc_ids_str = [str(did) for did in document_ids]
+                                all_docs = self.vectorstore.similarity_search(query, k=50)
+                                filtered = []
+                                for doc in all_docs:
+                                    doc_id = doc.metadata.get("document_id")
+                                    if doc_id is not None and (str(doc_id) in doc_ids_str or doc_id in document_ids):
+                                        filtered.append(doc)
+                                        if len(filtered) >= 5:
+                                            break
+                                return filtered
                         
                         # Temporarily replace retriever
                         original_retriever = self.qa_chain.retriever
