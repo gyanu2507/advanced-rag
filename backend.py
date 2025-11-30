@@ -473,6 +473,73 @@ async def get_auth_user(
     }
 
 
+@app.get("/auth/google/callback")
+async def google_oauth_callback(
+    code: Optional[str] = None,
+    error: Optional[str] = None
+):
+    """Handle Google OAuth callback."""
+    if error:
+        return {"status": "error", "message": f"OAuth error: {error}"}
+    
+    if not code:
+        return {"status": "error", "message": "No authorization code received"}
+    
+    # Exchange code for token
+    try:
+        token_url = "https://oauth2.googleapis.com/token"
+        token_data = {
+            "code": code,
+            "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+            "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+            "redirect_uri": os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8501/auth/callback"),
+            "grant_type": "authorization_code"
+        }
+        
+        response = requests.post(token_url, data=token_data, timeout=10)
+        if response.status_code != 200:
+            return {"status": "error", "message": "Failed to exchange code for token"}
+        
+        token_info = response.json()
+        access_token = token_info.get("access_token")
+        
+        if not access_token:
+            return {"status": "error", "message": "No access token received"}
+        
+        # Get user info
+        user_info_response = requests.get(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10
+        )
+        
+        if user_info_response.status_code != 200:
+            return {"status": "error", "message": "Failed to get user info"}
+        
+        user_info = user_info_response.json()
+        
+        return {
+            "status": "success",
+            "access_token": access_token,
+            "user_info": user_info
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.get("/auth/google/config")
+async def get_google_config():
+    """Get Google OAuth configuration for frontend."""
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8501/auth/callback")
+    
+    return {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "enabled": bool(client_id)
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

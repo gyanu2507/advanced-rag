@@ -118,11 +118,33 @@ def create_or_get_user_by_phone(db: Session, phone: str) -> User:
 
 
 def verify_google_token(token: str) -> Optional[Dict]:
-    """Verify Google OAuth token and get user info."""
+    """Verify Google OAuth token and get user info.
+    
+    Supports both:
+    1. OAuth2 access tokens (Bearer tokens)
+    2. Google ID tokens (JWT tokens from Google Sign-In)
+    """
     try:
-        # Verify token with Google
+        # Try as ID token first (Google Sign-In)
+        try:
+            import jwt
+            # Decode without verification first to get the token type
+            decoded = jwt.decode(token, options={"verify_signature": False})
+            if "email" in decoded:
+                # This is an ID token, return the decoded info
+                return {
+                    "id": decoded.get("sub"),
+                    "email": decoded.get("email"),
+                    "name": decoded.get("name", ""),
+                    "picture": decoded.get("picture", ""),
+                    "verified_email": decoded.get("email_verified", False)
+                }
+        except:
+            pass
+        
+        # Try as OAuth2 access token
         response = requests.get(
-            f"https://www.googleapis.com/oauth2/v2/userinfo",
+            "https://www.googleapis.com/oauth2/v2/userinfo",
             headers={"Authorization": f"Bearer {token}"},
             timeout=10
         )

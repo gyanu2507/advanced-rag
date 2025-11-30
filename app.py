@@ -671,6 +671,17 @@ def get_user_documents(user_id: str):
         return None
 
 
+# Check for token in URL (from OAuth callback)
+if "token" in st.query_params:
+    token = st.query_params["token"]
+    token_info = verify_auth_token(token)
+    if token_info and token_info.get("status") == "valid":
+        st.session_state.auth_token = token
+        st.session_state.authenticated = True
+        st.session_state.user_id = token_info.get("user_id")
+        st.session_state.user_email = token_info.get("email")
+        st.rerun()
+
 # Authentication Check
 if not st.session_state.authenticated and st.session_state.auth_token:
     # Verify token on page load
@@ -678,6 +689,7 @@ if not st.session_state.authenticated and st.session_state.auth_token:
     if token_info and token_info.get("status") == "valid":
         st.session_state.authenticated = True
         st.session_state.user_id = token_info.get("user_id")
+        st.session_state.user_email = token_info.get("email")
     else:
         st.session_state.auth_token = None
 
@@ -707,7 +719,15 @@ if not st.session_state.authenticated:
     
     st.markdown('<div class="login-container">', unsafe_allow_html=True)
     st.markdown('<h1 class="login-title">✨ AI Document Q&A</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align: center; color: #64748b; margin-bottom: 2rem;">Sign in to access your documents</p>', unsafe_allow_html=True)
+    st.markdown('<p style="text-align: center; color: #64748b; margin-bottom: 2rem;">Choose how you want to sign in</p>', unsafe_allow_html=True)
+    
+    # Quick Guest Access Button (prominent)
+    st.markdown("---")
+    if st.button("🚀 Continue as Guest", use_container_width=True, type="primary"):
+        st.session_state.authenticated = True
+        st.rerun()
+    st.markdown("---")
+    st.markdown('<p style="text-align: center; color: #94a3b8; font-size: 0.9rem; margin: 1rem 0;">Or sign in for a personalized experience</p>', unsafe_allow_html=True)
     
     # Login Tabs
     tab1, tab2 = st.tabs(["📧 Email (Google)", "📱 Phone"])
@@ -716,35 +736,65 @@ if not st.session_state.authenticated:
         st.markdown("### Sign in with Google")
         st.markdown("Use your Gmail account to sign in securely")
         
-        # Check if Google OAuth is configured
-        from auth import GOOGLE_OAUTH_ENABLED, GOOGLE_CLIENT_ID
+        # Get Google OAuth config
+        try:
+            config_response = requests.get(f"{API_URL}/auth/google/config", timeout=5)
+            google_config = config_response.json() if config_response.status_code == 200 else {}
+            google_enabled = google_config.get("enabled", False)
+            client_id = google_config.get("client_id", "")
+        except:
+            google_enabled = False
+            client_id = ""
         
-        if GOOGLE_OAUTH_ENABLED:
-            st.success("✅ Google OAuth is configured!")
+        if google_enabled and client_id:
+            # Google Sign-In Button
             st.markdown("""
-            <div style='margin: 1rem 0; padding: 1rem; background: rgba(16, 185, 129, 0.1); 
-                        border-radius: 8px; border-left: 3px solid #10b981;'>
-                <strong>Ready to use Google Sign-In!</strong><br>
-                Use the token input below or integrate Google Sign-In button in your frontend.
+            <div id="g_id_onload"
+                data-client_id="{}"
+                data-callback="handleGoogleSignIn"
+                data-auto_prompt="false">
             </div>
-            """, unsafe_allow_html=True)
+            <div class="g_id_signin" 
+                data-type="standard"
+                data-size="large"
+                data-theme="outline"
+                data-text="sign_in_with"
+                data-shape="rectangular"
+                data-logo_alignment="left"
+                style="margin: 1rem 0;">
+            </div>
+            
+            <script src="https://accounts.google.com/gsi/client" async defer></script>
+            <script>
+            function handleGoogleSignIn(response) {{
+                if (response.credential) {{
+                    // Send token to backend
+                    fetch('{}/auth/google', {{
+                        method: 'POST',
+                        headers: {{'Content-Type': 'application/json'}},
+                        body: JSON.stringify({{token: response.credential}})
+                    }})
+                    .then(res => res.json())
+                    .then(data => {{
+                        if (data.status === 'success') {{
+                            // Store token and reload
+                            window.location.href = '/?token=' + encodeURIComponent(data.token);
+                        }} else {{
+                            alert('Authentication failed: ' + (data.message || 'Unknown error'));
+                        }}
+                    }})
+                    .catch(err => {{
+                        alert('Error: ' + err.message);
+                    }});
+                }}
+            }}
+            </script>
+            """.format(client_id, API_URL), unsafe_allow_html=True)
+            
+            st.markdown("---")
+            st.caption("🔒 Your data is secure. We only access your email address.")
         else:
-            st.info("🔧 **Google OAuth Setup Required:**\n\n1. Get Google Client ID from [Google Cloud Console](https://console.cloud.google.com/)\n2. Add to `.env`: `GOOGLE_CLIENT_ID=your_client_id`\n3. Set redirect URI: `http://localhost:8501/auth/callback`")
-        
-        # Alternative: Manual token input for testing
-        with st.expander("🔑 Enter Google Token (for testing)"):
-            google_token = st.text_input("Google OAuth Token", type="password")
-            if st.button("Sign In with Token", use_container_width=True):
-                result = authenticate_with_google(google_token)
-                if result and result.get("status") == "success":
-                    st.session_state.auth_token = result.get("token")
-                    st.session_state.authenticated = True
-                    st.session_state.user_id = result.get("user_id")
-                    st.session_state.user_email = result.get("user", {}).get("email")
-                    st.success("✅ Signed in successfully!")
-                    st.rerun()
-                else:
-                    st.error("❌ Authentication failed. Please check your token.")
+            st.warning("⚠️ Google OAuth is not configured. Please set up Google Client ID in environment variables.")
     
     with tab2:
         st.markdown("### Sign in with Phone")
@@ -794,12 +844,6 @@ if not st.session_state.authenticated:
                         st.success("✅ Code resent!")
                     else:
                         st.error("❌ Failed to resend code")
-    
-    # Skip login option (anonymous mode)
-    st.markdown("---")
-    if st.button("🚀 Continue as Guest", use_container_width=True):
-        st.session_state.authenticated = True
-        st.rerun()
     
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
