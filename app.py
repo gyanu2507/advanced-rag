@@ -635,17 +635,6 @@ with st.sidebar:
     if "user_id_input" not in st.session_state:
         st.session_state.user_id_input = st.session_state.user_id
     
-    # Check if button was clicked (before creating widgets)
-    if "btn_new_id" in st.session_state and st.session_state.btn_new_id:
-        import uuid
-        new_id = str(uuid.uuid4())[:8]
-        st.session_state.user_id = new_id
-        st.session_state.user_id_input = new_id  # Update BEFORE widget creation
-        st.session_state.messages = []
-        st.session_state.document_uploaded = False
-        st.session_state.btn_new_id = False
-        st.rerun()
-    
     # User ID Input - Full width
     user_id_input = st.text_input(
         "User ID",
@@ -656,6 +645,12 @@ with st.sidebar:
     
     # Generate New ID Button - Below input
     if st.button("🔄 Generate New User ID", use_container_width=True, key="btn_new_id"):
+        import uuid
+        new_id = str(uuid.uuid4())[:8]
+        st.session_state.user_id = new_id
+        st.session_state.user_id_input = new_id
+        st.session_state.messages = []
+        st.session_state.document_uploaded = False
         st.rerun()
     
     # Sync: Update session state if user manually changed the input
