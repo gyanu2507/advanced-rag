@@ -24,6 +24,9 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8501/auth/callback")
 
+# Check if Google OAuth is configured
+GOOGLE_OAUTH_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
 # Phone Verification (Simple OTP - for production, use Twilio or similar)
 OTP_STORAGE: Dict[str, Dict] = {}  # {phone: {code, expires_at, attempts}}
 OTP_EXPIRATION_MINUTES = 10

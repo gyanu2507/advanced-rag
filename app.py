@@ -716,7 +716,20 @@ if not st.session_state.authenticated:
         st.markdown("### Sign in with Google")
         st.markdown("Use your Gmail account to sign in securely")
         
-        st.info("🔧 **Google OAuth Setup Required:**\n\n1. Get Google Client ID from [Google Cloud Console](https://console.cloud.google.com/)\n2. Add to `.env`: `GOOGLE_CLIENT_ID=your_client_id`\n3. Set redirect URI: `http://localhost:8501/auth/callback`")
+        # Check if Google OAuth is configured
+        from auth import GOOGLE_OAUTH_ENABLED, GOOGLE_CLIENT_ID
+        
+        if GOOGLE_OAUTH_ENABLED:
+            st.success("✅ Google OAuth is configured!")
+            st.markdown("""
+            <div style='margin: 1rem 0; padding: 1rem; background: rgba(16, 185, 129, 0.1); 
+                        border-radius: 8px; border-left: 3px solid #10b981;'>
+                <strong>Ready to use Google Sign-In!</strong><br>
+                Use the token input below or integrate Google Sign-In button in your frontend.
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.info("🔧 **Google OAuth Setup Required:**\n\n1. Get Google Client ID from [Google Cloud Console](https://console.cloud.google.com/)\n2. Add to `.env`: `GOOGLE_CLIENT_ID=your_client_id`\n3. Set redirect URI: `http://localhost:8501/auth/callback`")
         
         # Alternative: Manual token input for testing
         with st.expander("🔑 Enter Google Token (for testing)"):
