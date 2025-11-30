@@ -640,17 +640,16 @@ with st.sidebar:
         import uuid
         new_id = str(uuid.uuid4())[:8]
         st.session_state.user_id = new_id
+        st.session_state.user_id_input = new_id  # Update the widget's session state
         st.session_state.messages = []
         st.session_state.document_uploaded = False
         st.session_state.generate_new_id = False
-        # Use rerun with args to update the widget value
         st.rerun()
     
     # User ID Input - Full width
-    # Use value parameter to set initial/default value
+    # Only use key parameter - it will sync with session state automatically
     user_id_input = st.text_input(
         "User ID",
-        value=st.session_state.user_id,
         key="user_id_input",
         help="Each user has isolated document storage",
         label_visibility="visible"
