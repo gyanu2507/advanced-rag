@@ -693,48 +693,56 @@ if not st.session_state.authenticated and st.session_state.auth_token:
     else:
         st.session_state.auth_token = None
 
-# Login Page (if not authenticated)
+# Login Page (if not authenticated) - Compact Single Page Layout
 if not st.session_state.authenticated:
     st.markdown("""
         <style>
-        .login-container {
-            max-width: 500px;
-            margin: 5rem auto;
-            padding: 3rem;
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        .main .block-container {
+            padding-top: 1rem;
+            padding-bottom: 1rem;
         }
         .login-title {
-            text-align: center;
             font-size: 2.5rem;
-            font-weight: 800;
+            font-weight: 900;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin-bottom: 1rem;
+            margin-bottom: 0.5rem;
+            line-height: 1.2;
         }
         </style>
     """, unsafe_allow_html=True)
     
-    st.markdown('<div class="login-container">', unsafe_allow_html=True)
-    st.markdown('<h1 class="login-title">✨ AI Document Q&A</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align: center; color: #64748b; margin-bottom: 2rem;">Choose how you want to sign in</p>', unsafe_allow_html=True)
+    # Two-column layout - Left: Content, Right: Sign-in Options
+    col_left, col_right = st.columns([1.2, 1], gap="large")
     
-    # Quick Guest Access Button (prominent)
-    st.markdown("---")
-    if st.button("🚀 Continue as Guest", use_container_width=True, type="primary"):
-        st.session_state.authenticated = True
-        st.rerun()
-    st.markdown("---")
-    st.markdown('<p style="text-align: center; color: #94a3b8; font-size: 0.9rem; margin: 1rem 0;">Or sign in for a personalized experience</p>', unsafe_allow_html=True)
+    with col_left:
+        st.markdown('<h1 class="login-title">✨ AI Document Q&A</h1>', unsafe_allow_html=True)
+        st.markdown('<p style="font-size: 1.1rem; color: #64748b; margin-bottom: 2rem;">Intelligent Document Understanding with Advanced RAG</p>', unsafe_allow_html=True)
+        
+        st.markdown("""
+        <div style='margin-top: 1rem;'>
+            <h3 style='color: #1f2937; margin-bottom: 0.75rem; font-size: 1.3rem;'>🚀 Key Features</h3>
+            <ul style='color: #64748b; line-height: 2; font-size: 0.95rem; margin: 0; padding-left: 1.5rem;'>
+                <li>📄 Upload & process multiple document formats</li>
+                <li>💡 Ask questions with AI-powered answers</li>
+                <li>🔍 Advanced semantic & hybrid search</li>
+                <li>🎯 Confidence scoring for reliability</li>
+                <li>💬 Conversation memory & context</li>
+                <li>🔒 Secure & private document storage</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
     
-    # Login Tabs
-    tab1, tab2 = st.tabs(["📧 Email (Google)", "📱 Phone"])
-    
-    with tab1:
-        st.markdown("### Sign in with Google")
-        st.markdown("Use your Gmail account to sign in securely")
+    with col_right:
+        st.markdown('<h2 style="color: #1f2937; margin-bottom: 1rem; font-size: 1.5rem;">Sign In</h2>', unsafe_allow_html=True)
+        
+        # Guest Option (Primary)
+        if st.button("🚀 Continue as Guest", use_container_width=True, type="primary", key="guest_login_btn"):
+            st.session_state.authenticated = True
+            st.rerun()
+        
+        st.markdown("---")
         
         # Get Google OAuth config
         try:
@@ -746,10 +754,12 @@ if not st.session_state.authenticated:
             google_enabled = False
             client_id = ""
         
+        # Google Sign-In
+        st.markdown("**📧 Sign in with Google**")
+        
         if google_enabled and client_id:
-            # Google Sign-In Button
             st.markdown(f"""
-            <div style="margin: 2rem 0; text-align: center;">
+            <div style="margin: 0.5rem 0; text-align: center;">
                 <div id="g_id_onload"
                     data-client_id="{client_id}"
                     data-callback="handleGoogleSignIn"
@@ -763,21 +773,14 @@ if not st.session_state.authenticated:
                     data-text="sign_in_with"
                     data-shape="rectangular"
                     data-logo_alignment="left"
-                    style="margin: 1rem auto; display: inline-block;">
+                    style="margin: 0.5rem auto; display: inline-block;">
                 </div>
             </div>
             
             <script src="https://accounts.google.com/gsi/client" async defer></script>
             <script>
             window.handleGoogleSignIn = function(response) {{
-                console.log('Google Sign-In response received');
                 if (response.credential) {{
-                    // Show loading
-                    const loadingDiv = document.createElement('div');
-                    loadingDiv.innerHTML = '<p style="text-align: center; color: #667eea;">Signing you in...</p>';
-                    document.querySelector('.g_id_signin').parentElement.appendChild(loadingDiv);
-                    
-                    // Send token to backend
                     fetch('{API_URL}/auth/google', {{
                         method: 'POST',
                         headers: {{'Content-Type': 'application/json'}},
@@ -785,85 +788,47 @@ if not st.session_state.authenticated:
                     }})
                     .then(res => res.json())
                     .then(data => {{
-                        console.log('Auth response:', data);
                         if (data.status === 'success') {{
-                            // Store token and reload
                             window.location.href = '/?token=' + encodeURIComponent(data.token);
                         }} else {{
                             alert('Authentication failed: ' + (data.message || 'Unknown error'));
-                            loadingDiv.remove();
                         }}
                     }})
-                    .catch(err => {{
-                        console.error('Auth error:', err);
-                        alert('Error: ' + err.message);
-                        loadingDiv.remove();
-                    }});
-                }} else {{
-                    console.error('No credential in response');
+                    .catch(err => alert('Error: ' + err.message));
                 }}
             }};
             </script>
             """, unsafe_allow_html=True)
-            
-            st.markdown("---")
-            st.caption("🔒 Your data is secure. We only access your email address.")
-            st.info("💡 **Tip:** Make sure you've authorized the redirect URI in Google Cloud Console")
+            st.caption("🔒 Secure authentication")
         else:
-            st.warning("⚠️ **Google OAuth Not Configured**")
-            with st.expander("📋 Setup Instructions"):
-                st.markdown("""
-                **To enable Google Sign-In:**
-                
-                1. **Go to [Google Cloud Console](https://console.cloud.google.com/)**
-                2. **Create or select a project**
-                3. **Enable Google+ API or Google Identity API**
-                4. **Go to Credentials → Create Credentials → OAuth 2.0 Client ID**
-                5. **Configure OAuth consent screen:**
-                   - User Type: External
-                   - App name: AI Document Q&A
-                   - Support email: your email
-                   - Scopes: email, profile
-                6. **Create OAuth Client:**
-                   - Application type: Web application
-                   - Authorized redirect URIs: 
-                     - `http://localhost:8501/auth/callback` (for local)
-                     - `https://yourdomain.com/auth/callback` (for production)
-                7. **Copy Client ID and Client Secret to `.env` file:**
-                   ```
-                   GOOGLE_CLIENT_ID=your-client-id-here
-                   GOOGLE_CLIENT_SECRET=your-client-secret-here
-                   GOOGLE_REDIRECT_URI=http://localhost:8501/auth/callback
-                   ```
-                8. **Restart the application**
-                """)
-    
-    with tab2:
-        st.markdown("### Sign in with Phone")
-        st.markdown("Receive a verification code via SMS")
+            st.info("⚠️ Google OAuth not configured")
         
-        phone_input = st.text_input("Phone Number", placeholder="+1234567890", key="phone_login_input")
+        st.markdown("---")
+        
+        # Phone Sign-In
+        st.markdown("**📱 Sign in with Phone**")
+        
+        phone_input = st.text_input("Phone Number", placeholder="+1234567890", key="phone_login_input", label_visibility="collapsed")
         
         if not st.session_state.phone_otp_sent:
-            if st.button("📱 Send Verification Code", use_container_width=True):
+            if st.button("📱 Send Code", use_container_width=True):
                 if phone_input:
                     result = send_phone_otp(phone_input)
                     if result and result.get("status") == "success":
                         st.session_state.phone_otp_sent = True
                         st.session_state.phone_for_verification = phone_input
-                        st.success(f"✅ {result.get('message')}")
-                        st.info(f"⏱️ Code expires in {result.get('expires_in', 600) // 60} minutes")
+                        st.success(f"✅ Code sent!")
                     else:
-                        st.error("❌ Failed to send OTP. Please try again.")
+                        st.error("❌ Failed to send OTP")
                 else:
-                    st.warning("⚠️ Please enter a phone number")
+                    st.warning("⚠️ Enter phone number")
         else:
-            st.info(f"📱 Verification code sent to {st.session_state.phone_for_verification}")
+            st.info(f"📱 Code sent to {st.session_state.phone_for_verification}")
             otp_code = st.text_input("Enter 6-digit code", max_chars=6, key="otp_input")
             
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("✅ Verify Code", use_container_width=True):
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if st.button("✅ Verify", use_container_width=True):
                     if otp_code and len(otp_code) == 6:
                         result = verify_phone_otp(st.session_state.phone_for_verification, otp_code)
                         if result and result.get("status") == "success":
@@ -873,21 +838,20 @@ if not st.session_state.authenticated:
                             st.session_state.user_phone = result.get("user", {}).get("phone")
                             st.session_state.phone_otp_sent = False
                             st.session_state.phone_for_verification = None
-                            st.success("✅ Phone verified successfully!")
+                            st.success("✅ Verified!")
                             st.rerun()
                         else:
-                            st.error(f"❌ {result.get('message', 'Verification failed')}")
+                            st.error(f"❌ {result.get('message', 'Failed')}")
                     else:
-                        st.warning("⚠️ Please enter a 6-digit code")
-            with col2:
-                if st.button("🔄 Resend Code", use_container_width=True):
+                        st.warning("⚠️ Enter 6 digits")
+            with col_b:
+                if st.button("🔄 Resend", use_container_width=True):
                     result = send_phone_otp(st.session_state.phone_for_verification)
                     if result and result.get("status") == "success":
-                        st.success("✅ Code resent!")
+                        st.success("✅ Resent!")
                     else:
-                        st.error("❌ Failed to resend code")
+                        st.error("❌ Failed")
     
-    st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
 # Main UI - Ultra Modern Design
