@@ -79,3 +79,4 @@ example_document.txt
 # Local documentation (keep main README only)
 README_DEPLOY.md
 DATABASE_GUIDE.md
+.env
