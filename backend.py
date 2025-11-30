@@ -531,12 +531,14 @@ async def google_oauth_callback(
 async def get_google_config():
     """Get Google OAuth configuration for frontend."""
     client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
     redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8501/auth/callback")
     
     return {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
-        "enabled": bool(client_id)
+        "enabled": bool(client_id and client_secret),
+        "configured": bool(client_id)
     }
 
 

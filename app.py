@@ -748,53 +748,95 @@ if not st.session_state.authenticated:
         
         if google_enabled and client_id:
             # Google Sign-In Button
-            st.markdown("""
-            <div id="g_id_onload"
-                data-client_id="{}"
-                data-callback="handleGoogleSignIn"
-                data-auto_prompt="false">
-            </div>
-            <div class="g_id_signin" 
-                data-type="standard"
-                data-size="large"
-                data-theme="outline"
-                data-text="sign_in_with"
-                data-shape="rectangular"
-                data-logo_alignment="left"
-                style="margin: 1rem 0;">
+            st.markdown(f"""
+            <div style="margin: 2rem 0; text-align: center;">
+                <div id="g_id_onload"
+                    data-client_id="{client_id}"
+                    data-callback="handleGoogleSignIn"
+                    data-auto_prompt="false"
+                    data-context="signin">
+                </div>
+                <div class="g_id_signin" 
+                    data-type="standard"
+                    data-size="large"
+                    data-theme="outline"
+                    data-text="sign_in_with"
+                    data-shape="rectangular"
+                    data-logo_alignment="left"
+                    style="margin: 1rem auto; display: inline-block;">
+                </div>
             </div>
             
             <script src="https://accounts.google.com/gsi/client" async defer></script>
             <script>
-            function handleGoogleSignIn(response) {{
+            window.handleGoogleSignIn = function(response) {{
+                console.log('Google Sign-In response received');
                 if (response.credential) {{
+                    // Show loading
+                    const loadingDiv = document.createElement('div');
+                    loadingDiv.innerHTML = '<p style="text-align: center; color: #667eea;">Signing you in...</p>';
+                    document.querySelector('.g_id_signin').parentElement.appendChild(loadingDiv);
+                    
                     // Send token to backend
-                    fetch('{}/auth/google', {{
+                    fetch('{API_URL}/auth/google', {{
                         method: 'POST',
                         headers: {{'Content-Type': 'application/json'}},
                         body: JSON.stringify({{token: response.credential}})
                     }})
                     .then(res => res.json())
                     .then(data => {{
+                        console.log('Auth response:', data);
                         if (data.status === 'success') {{
                             // Store token and reload
                             window.location.href = '/?token=' + encodeURIComponent(data.token);
                         }} else {{
                             alert('Authentication failed: ' + (data.message || 'Unknown error'));
+                            loadingDiv.remove();
                         }}
                     }})
                     .catch(err => {{
+                        console.error('Auth error:', err);
                         alert('Error: ' + err.message);
+                        loadingDiv.remove();
                     }});
+                }} else {{
+                    console.error('No credential in response');
                 }}
-            }}
+            }};
             </script>
-            """.format(client_id, API_URL), unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
             
             st.markdown("---")
             st.caption("🔒 Your data is secure. We only access your email address.")
+            st.info("💡 **Tip:** Make sure you've authorized the redirect URI in Google Cloud Console")
         else:
-            st.warning("⚠️ Google OAuth is not configured. Please set up Google Client ID in environment variables.")
+            st.warning("⚠️ **Google OAuth Not Configured**")
+            with st.expander("📋 Setup Instructions"):
+                st.markdown("""
+                **To enable Google Sign-In:**
+                
+                1. **Go to [Google Cloud Console](https://console.cloud.google.com/)**
+                2. **Create or select a project**
+                3. **Enable Google+ API or Google Identity API**
+                4. **Go to Credentials → Create Credentials → OAuth 2.0 Client ID**
+                5. **Configure OAuth consent screen:**
+                   - User Type: External
+                   - App name: AI Document Q&A
+                   - Support email: your email
+                   - Scopes: email, profile
+                6. **Create OAuth Client:**
+                   - Application type: Web application
+                   - Authorized redirect URIs: 
+                     - `http://localhost:8501/auth/callback` (for local)
+                     - `https://yourdomain.com/auth/callback` (for production)
+                7. **Copy Client ID and Client Secret to `.env` file:**
+                   ```
+                   GOOGLE_CLIENT_ID=your-client-id-here
+                   GOOGLE_CLIENT_SECRET=your-client-secret-here
+                   GOOGLE_REDIRECT_URI=http://localhost:8501/auth/callback
+                   ```
+                8. **Restart the application**
+                """)
     
     with tab2:
         st.markdown("### Sign in with Phone")
