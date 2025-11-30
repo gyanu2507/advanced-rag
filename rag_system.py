@@ -476,7 +476,9 @@ Provide a detailed and accurate answer based on the context provided:"""
             return {
                 "answer": "No documents have been loaded yet. Please upload a document first.",
                 "sources": [],
-                "confidence": 0.0
+                "num_sources": 0,
+                "confidence": 0.0,
+                "enhanced": use_enhancements
             }
         
         try:
@@ -524,12 +526,16 @@ Provide a detailed and accurate answer based on the context provided:"""
                     return {
                         "answer": "No relevant information found in the selected document(s).",
                         "sources": [],
-                        "confidence": 0.0
+                        "num_sources": 0,
+                        "confidence": 0.0,
+                        "enhanced": use_enhancements
                     }
                 return {
                     "answer": "No relevant information found in the documents.",
                     "sources": [],
-                    "confidence": 0.0
+                    "num_sources": 0,
+                    "confidence": 0.0,
+                    "enhanced": use_enhancements
                 }
             
             # Use enhanced question for LLM if available
@@ -661,7 +667,9 @@ Provide a detailed and accurate answer based on the context provided:"""
             return {
                 "answer": f"Error processing query: {str(e)}",
                 "sources": [],
-                "confidence": 0.0
+                "num_sources": 0,
+                "confidence": 0.0,
+                "enhanced": use_enhancements
             }
     
     def clear_documents(self, user_id: Optional[str] = None):

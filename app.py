@@ -906,7 +906,12 @@ if prompt := st.chat_input("Ask a question about your document..."):
             if response:
                 answer = response.get("answer", "No answer available")
                 sources = response.get("sources", [])
-                num_sources = response.get("num_sources", len(sources))
+                # Ensure num_sources is always an integer (default to len(sources) if not provided)
+                num_sources = response.get("num_sources")
+                if num_sources is None:
+                    num_sources = len(sources) if sources else 0
+                else:
+                    num_sources = int(num_sources)
                 confidence = response.get("confidence", None)
                 enhanced = response.get("enhanced", False)
                 
@@ -950,7 +955,7 @@ if prompt := st.chat_input("Ask a question about your document..."):
                 """, unsafe_allow_html=True)
                 
                 # Source count badge
-                if num_sources > 0:
+                if num_sources and num_sources > 0:
                     st.markdown(f"""
                         <div style='display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
                                     color: white; padding: 0.5rem 1rem; border-radius: 20px; 
