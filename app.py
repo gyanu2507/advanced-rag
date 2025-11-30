@@ -616,6 +616,10 @@ st.markdown("""
             <span class="feature-badge">🚀 Smart Chunking</span>
             <span class="feature-badge">🎯 Advanced Embeddings</span>
             <span class="feature-badge">💡 Intelligent Retrieval</span>
+            <span class="feature-badge">🔍 Hybrid Search</span>
+            <span class="feature-badge">✨ Query Rewriting</span>
+            <span class="feature-badge">🎯 Confidence Scoring</span>
+            <span class="feature-badge">💬 Conversation Memory</span>
             <span class="feature-badge">🔒 User Privacy</span>
             <span class="feature-badge">💾 Database Tracking</span>
         </div>
@@ -903,6 +907,8 @@ if prompt := st.chat_input("Ask a question about your document..."):
                 answer = response.get("answer", "No answer available")
                 sources = response.get("sources", [])
                 num_sources = response.get("num_sources", len(sources))
+                confidence = response.get("confidence", None)
+                enhanced = response.get("enhanced", False)
                 
                 # Classy answer display
                 st.markdown("""
@@ -912,6 +918,29 @@ if prompt := st.chat_input("Ask a question about your document..."):
                         <strong style='color: #10b981; font-size: 1.1rem;'>💡 Answer</strong>
                     </div>
                 """, unsafe_allow_html=True)
+                
+                # Display confidence and enhanced status
+                if confidence is not None or enhanced:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if confidence is not None:
+                            confidence_color = "#10b981" if confidence >= 0.7 else "#f59e0b" if confidence >= 0.4 else "#ef4444"
+                            st.markdown(f"""
+                                <div style='display: inline-block; background: {confidence_color}20; 
+                                            color: {confidence_color}; padding: 0.5rem 1rem; border-radius: 20px; 
+                                            font-weight: 600; font-size: 0.9rem; border: 1px solid {confidence_color}40;'>
+                                    🎯 Confidence: {confidence:.0%}
+                                </div>
+                            """, unsafe_allow_html=True)
+                    with col2:
+                        if enhanced:
+                            st.markdown("""
+                                <div style='display: inline-block; background: rgba(102, 126, 234, 0.1); 
+                                            color: #667eea; padding: 0.5rem 1rem; border-radius: 20px; 
+                                            font-weight: 600; font-size: 0.9rem; border: 1px solid rgba(102, 126, 234, 0.3);'>
+                                    ✨ Enhanced Search
+                                </div>
+                            """, unsafe_allow_html=True)
                 
                 # Enhanced answer text
                 st.markdown(f"""

@@ -72,6 +72,9 @@ class QueryRequest(BaseModel):
 class QueryResponse(BaseModel):
     answer: str
     sources: list
+    num_sources: Optional[int] = None
+    confidence: Optional[float] = None
+    enhanced: Optional[bool] = False
 
 
 @app.get("/health")
@@ -167,7 +170,7 @@ async def query_documents(
         # Get or create user
         get_or_create_user(db, user_id)
         
-        # Query RAG system with optional document filter
+        # Query RAG system with optional document filter and enhanced features
         rag_system = get_rag_system(user_id)
         # Support both single document_id (legacy) and multiple document_ids
         if request.document_ids:
@@ -176,7 +179,12 @@ async def query_documents(
             document_ids = [str(request.document_id)]
         else:
             document_ids = None
-        result = rag_system.query(request.question, document_ids=document_ids)
+        result = rag_system.query(
+            request.question, 
+            document_ids=document_ids,
+            user_id=user_id,
+            use_enhancements=True  # Enable all enhancements
+        )
         
         response_time = time.time() - start_time
         
@@ -203,7 +211,7 @@ async def clear_documents(
     try:
         # Clear from RAG system
         if user_id in user_rag_systems:
-            user_rag_systems[user_id].clear_documents()
+            user_rag_systems[user_id].clear_documents(user_id=user_id)
             del user_rag_systems[user_id]
         else:
             # Clear the directory even if not in memory
