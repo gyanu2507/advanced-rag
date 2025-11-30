@@ -31,11 +31,16 @@ class User(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=True)
+    phone = Column(String, unique=True, index=True, nullable=True)
+    auth_type = Column(String, nullable=True)  # 'email', 'phone', 'google', 'anonymous'
+    google_id = Column(String, unique=True, index=True, nullable=True)
+    is_verified = Column(String, default="false")  # 'true', 'false'
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active = Column(DateTime, default=datetime.utcnow)
     
     def __repr__(self):
-        return f"<User(user_id='{self.user_id}')>"
+        return f"<User(user_id='{self.user_id}', email='{self.email}', phone='{self.phone}')>"
 
 
 class Document(Base):

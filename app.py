@@ -513,6 +513,18 @@ if "document_uploaded" not in st.session_state:
 if "user_id" not in st.session_state:
     import uuid
     st.session_state.user_id = str(uuid.uuid4())[:8]  # Generate a short user ID
+if "auth_token" not in st.session_state:
+    st.session_state.auth_token = None
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "user_email" not in st.session_state:
+    st.session_state.user_email = None
+if "user_phone" not in st.session_state:
+    st.session_state.user_phone = None
+if "phone_otp_sent" not in st.session_state:
+    st.session_state.phone_otp_sent = False
+if "phone_for_verification" not in st.session_state:
+    st.session_state.phone_for_verification = None
 
 
 def check_api_health():
@@ -598,6 +610,58 @@ def get_user_stats(user_id: str):
         return None
 
 
+def authenticate_with_google(token: str):
+    """Authenticate with Google OAuth token."""
+    try:
+        response = requests.post(
+            f"{API_URL}/auth/google",
+            json={"token": token},
+            timeout=10
+        )
+        return response.json() if response.status_code == 200 else None
+    except:
+        return None
+
+
+def send_phone_otp(phone: str):
+    """Send OTP to phone number."""
+    try:
+        response = requests.post(
+            f"{API_URL}/auth/phone/send-otp",
+            json={"phone": phone},
+            timeout=10
+        )
+        return response.json() if response.status_code == 200 else None
+    except:
+        return None
+
+
+def verify_phone_otp(phone: str, code: str):
+    """Verify phone OTP."""
+    try:
+        response = requests.post(
+            f"{API_URL}/auth/phone/verify",
+            json={"phone": phone, "code": code},
+            timeout=10
+        )
+        return response.json() if response.status_code == 200 else None
+    except:
+        return None
+
+
+def verify_auth_token(token: str):
+    """Verify authentication token."""
+    try:
+        response = requests.post(
+            f"{API_URL}/auth/verify-token",
+            data={"token": token},
+            timeout=5
+        )
+        return response.json() if response.status_code == 200 else None
+    except:
+        return None
+
+
 def get_user_documents(user_id: str):
     """Get user documents from database."""
     try:
@@ -606,6 +670,126 @@ def get_user_documents(user_id: str):
     except:
         return None
 
+
+# Authentication Check
+if not st.session_state.authenticated and st.session_state.auth_token:
+    # Verify token on page load
+    token_info = verify_auth_token(st.session_state.auth_token)
+    if token_info and token_info.get("status") == "valid":
+        st.session_state.authenticated = True
+        st.session_state.user_id = token_info.get("user_id")
+    else:
+        st.session_state.auth_token = None
+
+# Login Page (if not authenticated)
+if not st.session_state.authenticated:
+    st.markdown("""
+        <style>
+        .login-container {
+            max-width: 500px;
+            margin: 5rem auto;
+            padding: 3rem;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        }
+        .login-title {
+            text-align: center;
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown('<div class="login-container">', unsafe_allow_html=True)
+    st.markdown('<h1 class="login-title">✨ AI Document Q&A</h1>', unsafe_allow_html=True)
+    st.markdown('<p style="text-align: center; color: #64748b; margin-bottom: 2rem;">Sign in to access your documents</p>', unsafe_allow_html=True)
+    
+    # Login Tabs
+    tab1, tab2 = st.tabs(["📧 Email (Google)", "📱 Phone"])
+    
+    with tab1:
+        st.markdown("### Sign in with Google")
+        st.markdown("Use your Gmail account to sign in securely")
+        
+        st.info("🔧 **Google OAuth Setup Required:**\n\n1. Get Google Client ID from [Google Cloud Console](https://console.cloud.google.com/)\n2. Add to `.env`: `GOOGLE_CLIENT_ID=your_client_id`\n3. Set redirect URI: `http://localhost:8501/auth/callback`")
+        
+        # Alternative: Manual token input for testing
+        with st.expander("🔑 Enter Google Token (for testing)"):
+            google_token = st.text_input("Google OAuth Token", type="password")
+            if st.button("Sign In with Token", use_container_width=True):
+                result = authenticate_with_google(google_token)
+                if result and result.get("status") == "success":
+                    st.session_state.auth_token = result.get("token")
+                    st.session_state.authenticated = True
+                    st.session_state.user_id = result.get("user_id")
+                    st.session_state.user_email = result.get("user", {}).get("email")
+                    st.success("✅ Signed in successfully!")
+                    st.rerun()
+                else:
+                    st.error("❌ Authentication failed. Please check your token.")
+    
+    with tab2:
+        st.markdown("### Sign in with Phone")
+        st.markdown("Receive a verification code via SMS")
+        
+        phone_input = st.text_input("Phone Number", placeholder="+1234567890", key="phone_login_input")
+        
+        if not st.session_state.phone_otp_sent:
+            if st.button("📱 Send Verification Code", use_container_width=True):
+                if phone_input:
+                    result = send_phone_otp(phone_input)
+                    if result and result.get("status") == "success":
+                        st.session_state.phone_otp_sent = True
+                        st.session_state.phone_for_verification = phone_input
+                        st.success(f"✅ {result.get('message')}")
+                        st.info(f"⏱️ Code expires in {result.get('expires_in', 600) // 60} minutes")
+                    else:
+                        st.error("❌ Failed to send OTP. Please try again.")
+                else:
+                    st.warning("⚠️ Please enter a phone number")
+        else:
+            st.info(f"📱 Verification code sent to {st.session_state.phone_for_verification}")
+            otp_code = st.text_input("Enter 6-digit code", max_chars=6, key="otp_input")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✅ Verify Code", use_container_width=True):
+                    if otp_code and len(otp_code) == 6:
+                        result = verify_phone_otp(st.session_state.phone_for_verification, otp_code)
+                        if result and result.get("status") == "success":
+                            st.session_state.auth_token = result.get("token")
+                            st.session_state.authenticated = True
+                            st.session_state.user_id = result.get("user_id")
+                            st.session_state.user_phone = result.get("user", {}).get("phone")
+                            st.session_state.phone_otp_sent = False
+                            st.session_state.phone_for_verification = None
+                            st.success("✅ Phone verified successfully!")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {result.get('message', 'Verification failed')}")
+                    else:
+                        st.warning("⚠️ Please enter a 6-digit code")
+            with col2:
+                if st.button("🔄 Resend Code", use_container_width=True):
+                    result = send_phone_otp(st.session_state.phone_for_verification)
+                    if result and result.get("status") == "success":
+                        st.success("✅ Code resent!")
+                    else:
+                        st.error("❌ Failed to resend code")
+    
+    # Skip login option (anonymous mode)
+    st.markdown("---")
+    if st.button("🚀 Continue as Guest", use_container_width=True):
+        st.session_state.authenticated = True
+        st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
 
 # Main UI - Ultra Modern Design
 st.markdown('<h1 class="main-header">✨ AI Document Q&A</h1>', unsafe_allow_html=True)
@@ -629,6 +813,24 @@ st.markdown("""
 # Sidebar - Ultra Compact Design
 with st.sidebar:
     st.markdown("### 📚 Document Q&A")
+    
+    # User Authentication Info
+    if st.session_state.authenticated:
+        if st.session_state.user_email:
+            st.markdown(f"👤 **{st.session_state.user_email}**")
+        elif st.session_state.user_phone:
+            st.markdown(f"📱 **{st.session_state.user_phone}**")
+        else:
+            st.markdown(f"👤 **User:** {st.session_state.user_id}")
+        
+        if st.button("🚪 Sign Out", use_container_width=True):
+            st.session_state.authenticated = False
+            st.session_state.auth_token = None
+            st.session_state.user_email = None
+            st.session_state.user_phone = None
+            st.session_state.messages = []
+            st.rerun()
+        st.markdown("---")
     
     # User Session - Compact
     # Initialize user_id_input in session state if not exists

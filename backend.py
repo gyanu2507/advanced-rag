@@ -16,7 +16,11 @@ from database import (
     create_query_record, get_user_documents, get_user_query_history,
     delete_user_documents, delete_user_queries, get_user_stats,
     purge_old_data, purge_all_old_data,
-    Document, QueryHistory
+    Document, QueryHistory, User
+)
+from auth import (
+    authenticate_with_google, verify_jwt_token, initiate_phone_verification,
+    verify_phone_otp, generate_jwt_token
 )
 
 app = FastAPI(title="AI Document Q&A API")
@@ -371,6 +375,102 @@ async def purge_all_data(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Authentication Endpoints
+
+class GoogleAuthRequest(BaseModel):
+    token: str
+
+
+class PhoneVerificationRequest(BaseModel):
+    phone: str
+
+
+class PhoneOTPVerifyRequest(BaseModel):
+    phone: str
+    code: str
+
+
+@app.post("/auth/google")
+async def google_auth(
+    request: GoogleAuthRequest,
+    db: Session = Depends(get_db)
+):
+    """Authenticate with Google OAuth token."""
+    try:
+        result = authenticate_with_google(request.token, db)
+        if result:
+            return result
+        else:
+            raise HTTPException(status_code=401, detail="Invalid Google token")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/auth/phone/send-otp")
+async def send_phone_otp(
+    request: PhoneVerificationRequest,
+    db: Session = Depends(get_db)
+):
+    """Send OTP to phone number."""
+    try:
+        result = initiate_phone_verification(request.phone)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/auth/phone/verify")
+async def verify_phone(
+    request: PhoneOTPVerifyRequest,
+    db: Session = Depends(get_db)
+):
+    """Verify phone OTP and authenticate."""
+    try:
+        result = verify_phone_otp(request.phone, request.code, db)
+        if result.get("status") == "error":
+            raise HTTPException(status_code=400, detail=result.get("message"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/auth/verify-token")
+async def verify_token(token: str = Form(...)):
+    """Verify JWT token and return user info."""
+    payload = verify_jwt_token(token)
+    if payload:
+        return {
+            "status": "valid",
+            "user_id": payload.get("user_id"),
+            "email": payload.get("email")
+        }
+    else:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+@app.get("/auth/user/{user_id}")
+async def get_auth_user(
+    user_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get authenticated user information."""
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return {
+        "user_id": user.user_id,
+        "email": user.email,
+        "phone": user.phone,
+        "auth_type": user.auth_type,
+        "is_verified": user.is_verified,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "last_active": user.last_active.isoformat() if user.last_active else None
+    }
 
 
 if __name__ == "__main__":
