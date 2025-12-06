@@ -271,3 +271,70 @@ def authenticate_with_google(token: str, db: Session) -> Optional[Dict]:
         }
     }
 
+
+def hash_password(password: str) -> str:
+    """Hash a password using SHA256 (for simple implementation)."""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Verify a password against its hash."""
+    return hash_password(password) == hashed
+
+
+def create_user_with_email_password(db: Session, email: str, password: str) -> Optional[User]:
+    """Create a new user with email and password."""
+    # Check if user already exists
+    existing_user = db.query(User).filter(User.email == email).first()
+    if existing_user:
+        return None  # User already exists
+    
+    # Generate user_id from email hash
+    user_id = hashlib.sha256(email.encode()).hexdigest()[:16]
+    
+    # Hash password
+    password_hash = hash_password(password)
+    
+    # Create user
+    user = User(
+        user_id=user_id,
+        email=email,
+        auth_type="email",
+        password_hash=password_hash,
+        is_verified="false"  # Email verification can be added later
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    
+    return user
+
+
+def authenticate_with_email_password(db: Session, email: str, password: str) -> Optional[Dict]:
+    """Authenticate user with email and password."""
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        return None
+    
+    # Verify password
+    if not user.password_hash or not verify_password(password, user.password_hash):
+        return None
+    
+    # Generate JWT token
+    jwt_token = generate_jwt_token(user.user_id, user.email)
+    
+    # Update last active
+    user.last_active = datetime.utcnow()
+    db.commit()
+    
+    return {
+        "status": "success",
+        "token": jwt_token,
+        "user_id": user.user_id,
+        "user": {
+            "user_id": user.user_id,
+            "email": user.email,
+            "is_verified": user.is_verified
+        }
+    }
+

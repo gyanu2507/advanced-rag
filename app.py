@@ -693,56 +693,373 @@ if not st.session_state.authenticated and st.session_state.auth_token:
     else:
         st.session_state.auth_token = None
 
-# Login Page (if not authenticated) - Compact Single Page Layout
+# Login Page (if not authenticated) - Design #7 with Stunning Motion Effects
 if not st.session_state.authenticated:
+    # Initialize session state for login mode
+    if "login_mode" not in st.session_state:
+        st.session_state.login_mode = "login"  # "login" or "signup"
+    if "remember_me" not in st.session_state:
+        st.session_state.remember_me = False
+    
     st.markdown("""
         <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800&display=swap');
+        
         .main .block-container {
-            padding-top: 1rem;
-            padding-bottom: 1rem;
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+            max-width: 1100px;
         }
+        
+        /* Animated Background Particles */
+        .auth-wrapper {
+            position: relative;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        
+        .auth-container {
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            padding: 3rem;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.5);
+            position: relative;
+            animation: slideInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-origin: center;
+        }
+        
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        @keyframes shimmer {
+            0% { background-position: -1000px 0; }
+            100% { background-position: 1000px 0; }
+        }
+        
         .login-title {
-            font-size: 2.5rem;
+            font-size: 3rem;
             font-weight: 900;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            background-size: 200% 200%;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             margin-bottom: 0.5rem;
             line-height: 1.2;
+            text-align: center;
+            animation: gradientShift 3s ease infinite, fadeIn 0.8s ease;
+            letter-spacing: -1px;
+        }
+        
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        .auth-subtitle {
+            text-align: center;
+            color: #64748b;
+            margin-bottom: 2rem;
+            font-size: 1.1rem;
+            animation: fadeIn 1s ease 0.2s both;
+        }
+        
+        /* Mode Toggle with Sliding Indicator */
+        .mode-toggle-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+            border-radius: 12px;
+            padding: 0.5rem;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+            height: 60px;
+            pointer-events: none;
+        }
+        
+        .mode-toggle-slider {
+            position: absolute;
+            top: 0.5rem;
+            left: 0.5rem;
+            width: calc(50% - 0.5rem);
+            height: calc(100% - 1rem);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            z-index: 0;
+        }
+        
+        .mode-toggle-slider.signup {
+            transform: translateX(calc(100% + 0.5rem));
+        }
+        
+        /* Make buttons appear above the slider */
+        [data-testid="column"]:has([data-testid="baseButton"]) {
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* Style secondary buttons to be transparent */
+        [data-testid="baseButton-secondary"] {
+            background: transparent !important;
+            color: #64748b !important;
+            box-shadow: none !important;
+        }
+        
+        [data-testid="baseButton-secondary"]:hover {
+            background: rgba(102, 126, 234, 0.05) !important;
+        }
+        
+        /* Form Elements with Animation */
+        .form-group {
+            animation: slideInUp 0.6s ease both;
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-group:nth-child(1) { animation-delay: 0.1s; }
+        .form-group:nth-child(2) { animation-delay: 0.2s; }
+        .form-group:nth-child(3) { animation-delay: 0.3s; }
+        .form-group:nth-child(4) { animation-delay: 0.4s; }
+        
+        /* Input Fields with Focus Animation */
+        .stTextInput>div>div>input,
+        .stTextInput>div>div>input:focus {
+            border-radius: 12px;
+            border: 2px solid #e2e8f0;
+            padding: 0.875rem 1.25rem;
+            background: rgba(255, 255, 255, 0.9);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 1rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        }
+        
+        .stTextInput>div>div>input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1), 0 4px 12px rgba(102, 126, 234, 0.15);
+            background: white;
+            transform: translateY(-2px);
+        }
+        
+        /* Buttons with Ripple Effect */
+        .stButton>button {
+            position: relative;
+            overflow: hidden;
+            border-radius: 12px;
+            padding: 0.875rem 2rem;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 14px 0 rgba(102, 126, 234, 0.39);
+        }
+        
+        .stButton>button::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.5);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+        
+        .stButton>button:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+        
+        .stButton>button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px 0 rgba(102, 126, 234, 0.5);
+        }
+        
+        .stButton>button:active {
+            transform: translateY(-1px) scale(0.98);
+        }
+        
+        /* Validation Messages */
+        .validation-error {
+            color: #ef4444;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+            animation: slideInLeft 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .validation-success {
+            color: #10b981;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+            animation: slideInLeft 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        /* Divider with Animation */
+        hr {
+            border: none;
+            height: 1px;
+            background: linear-gradient(90deg, transparent 0%, #e2e8f0 20%, #e2e8f0 80%, transparent 100%);
+            margin: 2rem 0;
+            animation: fadeIn 0.6s ease;
+        }
+        
+        /* Social Login Buttons */
+        .social-login {
+            animation: slideInUp 0.6s ease 0.3s both;
+        }
+        
+        /* Guest Button Special Animation */
+        .guest-btn {
+            animation: pulse 2s ease infinite;
+        }
+        
+        /* Feature List Animation */
+        .feature-list {
+            animation: slideInLeft 0.8s ease 0.2s both;
+        }
+        
+        .feature-list li {
+            animation: fadeIn 0.5s ease both;
+            margin-bottom: 0.75rem;
+        }
+        
+        .feature-list li:nth-child(1) { animation-delay: 0.3s; }
+        .feature-list li:nth-child(2) { animation-delay: 0.4s; }
+        .feature-list li:nth-child(3) { animation-delay: 0.5s; }
+        .feature-list li:nth-child(4) { animation-delay: 0.6s; }
+        .feature-list li:nth-child(5) { animation-delay: 0.7s; }
+        .feature-list li:nth-child(6) { animation-delay: 0.8s; }
+        
+        /* Checkbox Styling */
+        .stCheckbox {
+            animation: fadeIn 0.6s ease 0.4s both;
+        }
+        
+        /* Phone OTP Section */
+        .otp-section {
+            animation: slideInUp 0.6s ease 0.5s both;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .auth-container {
+                padding: 2rem 1.5rem;
+            }
+            .login-title {
+                font-size: 2rem;
+            }
         }
         </style>
     """, unsafe_allow_html=True)
     
-    # Two-column layout - Left: Content, Right: Sign-in Options
-    col_left, col_right = st.columns([1.2, 1], gap="large")
+    # Two-column layout - Left: Content, Right: Auth Form
+    col_left, col_right = st.columns([1.1, 1], gap="large")
     
     with col_left:
         st.markdown('<h1 class="login-title">✨ AI Document Q&A</h1>', unsafe_allow_html=True)
-        st.markdown('<p style="font-size: 1.1rem; color: #64748b; margin-bottom: 2rem;">Intelligent Document Understanding with Advanced RAG</p>', unsafe_allow_html=True)
+        st.markdown('<p class="auth-subtitle">Intelligent Document Understanding with Advanced RAG</p>', unsafe_allow_html=True)
         
         st.markdown("""
-        <div style='margin-top: 1rem;'>
-            <h3 style='color: #1f2937; margin-bottom: 0.75rem; font-size: 1.3rem;'>🚀 Key Features</h3>
-            <ul style='color: #64748b; line-height: 2; font-size: 0.95rem; margin: 0; padding-left: 1.5rem;'>
-                <li>📄 Upload & process multiple document formats</li>
-                <li>💡 Ask questions with AI-powered answers</li>
-                <li>🔍 Advanced semantic & hybrid search</li>
-                <li>🎯 Confidence scoring for reliability</li>
-                <li>💬 Conversation memory & context</li>
-                <li>🔒 Secure & private document storage</li>
+        <div class="feature-list" style='margin-top: 2rem;'>
+            <h3 style='color: #1f2937; margin-bottom: 1rem; font-size: 1.4rem; font-weight: 700;'>🚀 Key Features</h3>
+            <ul style='color: #64748b; line-height: 2.2; font-size: 1rem; margin: 0; padding-left: 1.5rem; list-style: none;'>
+                <li style='padding: 0.5rem 0;'>✨ 📄 Upload & process multiple document formats</li>
+                <li style='padding: 0.5rem 0;'>✨ 💡 Ask questions with AI-powered answers</li>
+                <li style='padding: 0.5rem 0;'>✨ 🔍 Advanced semantic & hybrid search</li>
+                <li style='padding: 0.5rem 0;'>✨ 🎯 Confidence scoring for reliability</li>
+                <li style='padding: 0.5rem 0;'>✨ 💬 Conversation memory & context</li>
+                <li style='padding: 0.5rem 0;'>✨ 🔒 Secure & private document storage</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
     
     with col_right:
-        st.markdown('<h2 style="color: #1f2937; margin-bottom: 1rem; font-size: 1.5rem;">Sign In</h2>', unsafe_allow_html=True)
+        st.markdown('<div class="auth-container">', unsafe_allow_html=True)
         
-        # Guest Option (Primary)
+        # Mode Toggle (Login/Sign Up) with Sliding Animation
+        st.markdown(f"""
+        <div style="position: relative; margin-bottom: 2rem;">
+            <div class="mode-toggle-container">
+                <div class="mode-toggle-slider {'signup' if st.session_state.login_mode == 'signup' else ''}"></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Toggle buttons with animation - positioned over the slider
+        col_login, col_signup = st.columns(2)
+        with col_login:
+            if st.button("🔐 Sign In", use_container_width=True, 
+                        type="primary" if st.session_state.login_mode == "login" else "secondary",
+                        key="btn_login_mode"):
+                st.session_state.login_mode = "login"
+                st.rerun()
+        with col_signup:
+            if st.button("📝 Sign Up", use_container_width=True,
+                        type="primary" if st.session_state.login_mode == "signup" else "secondary",
+                        key="btn_signup_mode"):
+                st.session_state.login_mode = "signup"
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # Guest Option (Always Available) with Pulse Animation
+        st.markdown('<div class="guest-btn">', unsafe_allow_html=True)
         if st.button("🚀 Continue as Guest", use_container_width=True, type="primary", key="guest_login_btn"):
             st.session_state.authenticated = True
             st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
         
-        st.markdown("---")
+        st.markdown('<p style="text-align: center; color: #64748b; margin: 1.5rem 0; font-weight: 500;">━━━ or ━━━</p>', unsafe_allow_html=True)
         
         # Get Google OAuth config
         try:
@@ -754,9 +1071,7 @@ if not st.session_state.authenticated:
             google_enabled = False
             client_id = ""
         
-        # Google Sign-In
-        st.markdown("**📧 Sign in with Google**")
-        
+        # Google Sign-In (One-Click)
         if google_enabled and client_id:
             st.markdown(f"""
             <div style="margin: 0.5rem 0; text-align: center;">
@@ -799,25 +1114,133 @@ if not st.session_state.authenticated:
             }};
             </script>
             """, unsafe_allow_html=True)
-            st.caption("🔒 Secure authentication")
-        else:
-            st.info("⚠️ Google OAuth not configured")
+        
+        st.markdown('<p style="text-align: center; color: #64748b; margin: 1rem 0;">or</p>', unsafe_allow_html=True)
+        
+        # Email/Password Authentication with Animation
+        st.markdown(f"""
+        <div class="form-group">
+            <h3 style='color: #1f2937; margin-bottom: 1rem; font-size: 1.2rem; font-weight: 600;'>
+                {'📧 Sign up with Email' if st.session_state.login_mode == 'signup' else '📧 Sign in with Email'}
+            </h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown('<div class="form-group">', unsafe_allow_html=True)
+        email_input = st.text_input("Email", placeholder="your.email@example.com", key="email_auth_input", label_visibility="collapsed")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Instant email validation
+        email_valid = False
+        email_error = ""
+        if email_input:
+            import re
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if re.match(email_pattern, email_input):
+                email_valid = True
+            else:
+                email_error = "⚠️ Invalid email format"
+        
+        if email_error:
+            st.markdown(f'<p class="validation-error">{email_error}</p>', unsafe_allow_html=True)
+        elif email_valid:
+            st.markdown('<p class="validation-success">✓ Valid email</p>', unsafe_allow_html=True)
+        
+        st.markdown('<div class="form-group">', unsafe_allow_html=True)
+        password_input = st.text_input("Password", type="password", placeholder="Enter your password", key="password_auth_input", label_visibility="collapsed")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Instant password validation (for signup)
+        password_valid = False
+        password_error = ""
+        if password_input:
+            if st.session_state.login_mode == "signup":
+                if len(password_input) < 6:
+                    password_error = "⚠️ Password must be at least 6 characters"
+                else:
+                    password_valid = True
+                    st.markdown('<p class="validation-success">✓ Password strength: Good</p>', unsafe_allow_html=True)
+        
+        if password_error:
+            st.markdown(f'<p class="validation-error">{password_error}</p>', unsafe_allow_html=True)
+        
+        # Remember Me option
+        remember_me = st.checkbox("Remember me", value=st.session_state.remember_me, key="remember_me_checkbox")
+        st.session_state.remember_me = remember_me
+        
+        # Forgot Password (Login mode only)
+        if st.session_state.login_mode == "login":
+            st.markdown('<p style="text-align: right; margin-top: -0.5rem;"><a href="#" style="color: #667eea; text-decoration: none;">Forgot password?</a></p>', unsafe_allow_html=True)
+        
+        # Submit button
+        button_label = "Sign Up" if st.session_state.login_mode == "signup" else "Sign In"
+        if st.button(f"🔐 {button_label}", use_container_width=True, type="primary", key="email_auth_submit"):
+            if email_input and password_input:
+                if st.session_state.login_mode == "signup":
+                    # Sign up
+                    try:
+                        response = requests.post(
+                            f"{API_URL}/auth/email/signup",
+                            json={"email": email_input, "password": password_input},
+                            timeout=10
+                        )
+                        result = response.json()
+                        if response.status_code == 200 and result.get("status") == "success":
+                            st.session_state.auth_token = result.get("token")
+                            st.session_state.authenticated = True
+                            st.session_state.user_id = result.get("user_id")
+                            st.session_state.user_email = result.get("user", {}).get("email")
+                            st.success("✅ Account created successfully!")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {result.get('detail', 'Sign up failed')}")
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
+                else:
+                    # Sign in
+                    try:
+                        response = requests.post(
+                            f"{API_URL}/auth/email/login",
+                            json={"email": email_input, "password": password_input},
+                            timeout=10
+                        )
+                        result = response.json()
+                        if response.status_code == 200 and result.get("status") == "success":
+                            st.session_state.auth_token = result.get("token")
+                            st.session_state.authenticated = True
+                            st.session_state.user_id = result.get("user_id")
+                            st.session_state.user_email = result.get("user", {}).get("email")
+                            st.success("✅ Signed in successfully!")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {result.get('detail', 'Invalid email or password')}")
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
+            else:
+                st.warning("⚠️ Please fill in all fields")
         
         st.markdown("---")
         
-        # Phone Sign-In
-        st.markdown("**📱 Sign in with Phone**")
+        # Phone Sign-In with Animation
+        st.markdown("""
+        <div class="otp-section">
+            <h3 style='color: #1f2937; margin-bottom: 1rem; font-size: 1.2rem; font-weight: 600;'>📱 Sign in with Phone</h3>
+        </div>
+        """, unsafe_allow_html=True)
         
         phone_input = st.text_input("Phone Number", placeholder="+1234567890", key="phone_login_input", label_visibility="collapsed")
         
         if not st.session_state.phone_otp_sent:
-            if st.button("📱 Send Code", use_container_width=True):
+            if st.button("📱 Send Code", use_container_width=True, key="phone_send_btn"):
                 if phone_input:
                     result = send_phone_otp(phone_input)
                     if result and result.get("status") == "success":
                         st.session_state.phone_otp_sent = True
                         st.session_state.phone_for_verification = phone_input
                         st.success(f"✅ Code sent!")
+                        st.rerun()
                     else:
                         st.error("❌ Failed to send OTP")
                 else:
@@ -828,7 +1251,7 @@ if not st.session_state.authenticated:
             
             col_a, col_b = st.columns(2)
             with col_a:
-                if st.button("✅ Verify", use_container_width=True):
+                if st.button("✅ Verify", use_container_width=True, key="phone_verify_btn"):
                     if otp_code and len(otp_code) == 6:
                         result = verify_phone_otp(st.session_state.phone_for_verification, otp_code)
                         if result and result.get("status") == "success":
@@ -839,18 +1262,21 @@ if not st.session_state.authenticated:
                             st.session_state.phone_otp_sent = False
                             st.session_state.phone_for_verification = None
                             st.success("✅ Verified!")
+                            time.sleep(1)
                             st.rerun()
                         else:
                             st.error(f"❌ {result.get('message', 'Failed')}")
                     else:
                         st.warning("⚠️ Enter 6 digits")
             with col_b:
-                if st.button("🔄 Resend", use_container_width=True):
+                if st.button("🔄 Resend", use_container_width=True, key="phone_resend_btn"):
                     result = send_phone_otp(st.session_state.phone_for_verification)
                     if result and result.get("status") == "success":
                         st.success("✅ Resent!")
                     else:
                         st.error("❌ Failed")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
     
     st.stop()
 
@@ -1211,8 +1637,8 @@ if prompt := st.chat_input("Ask a question about your document..."):
                                             color: #667eea; padding: 0.5rem 1rem; border-radius: 20px; 
                                             font-weight: 600; font-size: 0.9rem; border: 1px solid rgba(102, 126, 234, 0.3);'>
                                     ✨ Enhanced Search
-                                </div>
-                            """, unsafe_allow_html=True)
+                    </div>
+                """, unsafe_allow_html=True)
                 
                 # Enhanced answer text
                 st.markdown(f"""

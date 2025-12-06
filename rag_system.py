@@ -1,10 +1,14 @@
 """
 RAG (Retrieval Augmented Generation) system implementation using FREE APIs.
-Enhanced with query rewriting, hybrid search, reranking, and conversation memory.
+Enhanced with query rewriting, hybrid search, cross-encoder reranking, 
+HyDE retrieval, RRF fusion, hallucination detection, and conversation memory.
+
+🚀 GREATEST RAG EVER - v2.0
 """
 import os
 import re
-from typing import List, Optional, Dict, Tuple
+import hashlib
+from typing import List, Optional, Dict, Tuple, Any
 from collections import defaultdict
 from dotenv import load_dotenv
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -16,13 +20,73 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 import torch
+import numpy as np
 from advanced_chunking import AdvancedChunker
+from retrieval_strategies import (
+    reciprocal_rank_fusion,
+    hyde_generate_hypothetical,
+    contextual_compression,
+    ParentChildRetriever
+)
+
+# Cross-encoder for superior reranking
+try:
+    from sentence_transformers import CrossEncoder
+    CROSS_ENCODER_AVAILABLE = True
+except ImportError:
+    CROSS_ENCODER_AVAILABLE = False
+    print("⚠️ CrossEncoder not available. Install sentence-transformers for better reranking.")
 
 load_dotenv()
 
 
+class EmbeddingCache:
+    """LRU cache for embeddings to avoid recomputation."""
+    
+    def __init__(self, max_size: int = 1000):
+        self.cache: Dict[str, np.ndarray] = {}
+        self.max_size = max_size
+        self.access_order: List[str] = []
+    
+    def get(self, text: str, embed_fn) -> np.ndarray:
+        """Get embedding from cache or compute it."""
+        key = hashlib.md5(text.encode()).hexdigest()
+        
+        if key in self.cache:
+            # Move to end (most recently used)
+            self.access_order.remove(key)
+            self.access_order.append(key)
+            return self.cache[key]
+        
+        # Compute new embedding
+        embedding = np.array(embed_fn(text))
+        
+        # Evict oldest if at capacity
+        if len(self.cache) >= self.max_size:
+            oldest = self.access_order.pop(0)
+            del self.cache[oldest]
+        
+        self.cache[key] = embedding
+        self.access_order.append(key)
+        return embedding
+    
+    def clear(self):
+        """Clear the cache."""
+        self.cache.clear()
+        self.access_order.clear()
+
+
 class RAGSystem:
-    """RAG system for document question-answering using free models."""
+    """RAG system for document question-answering using free models.
+    
+    🚀 GREATEST RAG EVER - v2.0 Features:
+    - Cross-encoder reranking for superior relevance
+    - Reciprocal Rank Fusion (RRF) for multi-retrieval
+    - HyDE (Hypothetical Document Embeddings)
+    - Embedding cache for performance
+    - Hallucination detection
+    - RAGAS-inspired evaluation metrics
+    """
     
     def __init__(self, persist_directory: str = "./chroma_db", use_api: bool = True):
         """Initialize the RAG system.
@@ -34,6 +98,9 @@ class RAGSystem:
         """
         self.persist_directory = persist_directory
         self.use_api = use_api
+        
+        # Initialize embedding cache for performance
+        self.embedding_cache = EmbeddingCache(max_size=500)
         
         # Initialize embeddings (using better free models)
         print("Loading embeddings model (this may take a minute on first run)...")
@@ -91,6 +158,17 @@ class RAGSystem:
         
         # Conversation memory for context-aware queries
         self.conversation_history: Dict[str, List[Dict[str, str]]] = defaultdict(list)
+        
+        # Initialize cross-encoder for superior reranking (lazy load)
+        self.cross_encoder = None
+        if CROSS_ENCODER_AVAILABLE:
+            try:
+                print("Loading cross-encoder model for reranking...")
+                # MS MARCO MiniLM is fast and highly accurate for reranking
+                self.cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+                print("✓ Cross-encoder loaded for superior reranking")
+            except Exception as e:
+                print(f"⚠️ Could not load cross-encoder: {e}. Falling back to heuristic reranking.")
         
         # Load existing vectorstore if it exists
         if os.path.exists(persist_directory):
@@ -158,14 +236,24 @@ class RAGSystem:
             self.qa_chain = None
             return
         
-        prompt_template = """Use the following pieces of context to answer the question at the end. 
-If you don't know the answer, just say that you don't know, don't try to make up an answer.
+        prompt_template = """You are an expert assistant helping users understand information from their documents. 
 
-Context: {context}
+Use the following context from uploaded documents to provide a clear, comprehensive, and well-structured answer to the question.
+
+IMPORTANT INSTRUCTIONS:
+- Answer in a natural, conversational tone
+- Synthesize information from multiple sources when relevant
+- Organize your answer logically with clear points
+- Only use information from the provided context
+- If the context doesn't contain enough information, say so clearly
+- Do not include source citations or references in your answer - just provide the information naturally
+
+Context from documents:
+{context}
 
 Question: {question}
 
-Provide a detailed and accurate answer based on the context provided:"""
+Provide a detailed, well-structured answer:"""
         
         PROMPT = PromptTemplate(
             template=prompt_template,
@@ -379,12 +467,42 @@ Provide a detailed and accurate answer based on the context provided:"""
         self, 
         query: str, 
         documents: List[Document], 
-        top_k: int = 5
+        top_k: int = 5,
+        use_cross_encoder: bool = True
     ) -> List[Document]:
-        """Rerank documents using simple heuristics."""
+        """Rerank documents using cross-encoder (if available) or heuristics.
+        
+        Cross-encoder provides dramatically better relevance scoring than 
+        bi-encoder similarity, as it jointly encodes query-document pairs.
+        """
         if not documents:
             return documents
         
+        # Use cross-encoder if available (superior relevance scoring)
+        if use_cross_encoder and self.cross_encoder is not None:
+            try:
+                # Create query-document pairs for cross-encoder
+                pairs = [[query, doc.page_content[:512]] for doc in documents]  # Limit length
+                scores = self.cross_encoder.predict(pairs)
+                
+                # Sort by cross-encoder score (higher = more relevant)
+                scored_docs = list(zip(documents, scores))
+                scored_docs.sort(key=lambda x: x[1], reverse=True)
+                
+                return [doc for doc, _ in scored_docs[:top_k]]
+            except Exception as e:
+                print(f"⚠️ Cross-encoder reranking failed: {e}. Falling back to heuristics.")
+        
+        # Fallback to heuristic reranking
+        return self._heuristic_rerank(query, documents, top_k)
+    
+    def _heuristic_rerank(
+        self, 
+        query: str, 
+        documents: List[Document], 
+        top_k: int = 5
+    ) -> List[Document]:
+        """Fallback heuristic reranking when cross-encoder is unavailable."""
         query_lower = query.lower()
         query_words = set(re.findall(r'\b\w+\b', query_lower))
         
@@ -396,16 +514,16 @@ Provide a detailed and accurate answer based on the context provided:"""
             # Calculate relevance score
             score = 0.0
             
-            # 1. Keyword overlap
+            # 1. Keyword overlap (40% weight)
             if query_words:
                 overlap = len(query_words & doc_words) / len(query_words)
                 score += overlap * 0.4
             
-            # 2. Query term frequency in document
+            # 2. Query term frequency in document (30% weight)
             term_freq = sum(doc_text.count(word) for word in query_words)
-            score += min(term_freq / 10.0, 0.3)  # Cap at 0.3
+            score += min(term_freq / 10.0, 0.3)
             
-            # 3. Position bonus (earlier chunks might be more important)
+            # 3. Position bonus - earlier chunks more important (20% weight)
             if doc.metadata and 'chunk_index' in doc.metadata:
                 chunk_idx = doc.metadata.get('chunk_index', 0)
                 total_chunks = doc.metadata.get('total_chunks', 1)
@@ -413,7 +531,7 @@ Provide a detailed and accurate answer based on the context provided:"""
                     position_score = 1.0 - (chunk_idx / max(total_chunks, 1))
                     score += position_score * 0.2
             
-            # 4. Length bonus (not too short, not too long)
+            # 4. Length bonus - prefer medium length docs (10% weight)
             doc_length = len(doc.page_content)
             if 100 <= doc_length <= 1000:
                 score += 0.1
@@ -424,44 +542,193 @@ Provide a detailed and accurate answer based on the context provided:"""
         scored_docs.sort(key=lambda x: x[1], reverse=True)
         return [doc for doc, _ in scored_docs[:top_k]]
     
+    def _synthesize_answer_from_chunks(self, question: str, docs: List[Document]) -> str:
+        """Intelligently synthesize an answer from retrieved document chunks.
+        
+        This creates a natural, coherent answer even without an LLM by:
+        1. Extracting relevant information
+        2. Removing redundancy
+        3. Organizing information logically
+        4. Creating a conversational response
+        """
+        if not docs:
+            return "I couldn't find relevant information in the uploaded documents to answer your question."
+        
+        # Extract all relevant text chunks
+        chunks = [doc.page_content.strip() for doc in docs if doc.page_content.strip()]
+        
+        if not chunks:
+            return "I found some documents, but they don't contain readable text to answer your question."
+        
+        # Combine and clean chunks
+        combined_text = " ".join(chunks)
+        
+        # Remove excessive whitespace and normalize
+        combined_text = re.sub(r'\s+', ' ', combined_text)
+        combined_text = re.sub(r'\.{3,}', '...', combined_text)
+        
+        # Extract key sentences that are most relevant to the question
+        question_lower = question.lower()
+        question_keywords = set(re.findall(r'\b\w{4,}\b', question_lower))
+        
+        # Split into sentences
+        sentences = re.split(r'[.!?]+', combined_text)
+        sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
+        
+        # Score sentences by relevance
+        scored_sentences = []
+        for sentence in sentences:
+            sentence_lower = sentence.lower()
+            sentence_words = set(re.findall(r'\b\w{4,}\b', sentence_lower))
+            
+            # Calculate relevance score
+            if question_keywords:
+                overlap = len(question_keywords & sentence_words) / len(question_keywords)
+            else:
+                overlap = 0.5  # Default if no keywords
+            
+            # Prefer longer, more informative sentences
+            length_score = min(len(sentence) / 200, 1.0)
+            
+            total_score = overlap * 0.7 + length_score * 0.3
+            scored_sentences.append((total_score, sentence))
+        
+        # Sort by relevance and take top sentences
+        scored_sentences.sort(reverse=True, key=lambda x: x[0])
+        top_sentences = [s for _, s in scored_sentences[:8]]  # Top 8 most relevant
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_sentences = []
+        for sentence in top_sentences:
+            sentence_normalized = sentence.lower()[:100]  # Use first 100 chars for deduplication
+            if sentence_normalized not in seen:
+                seen.add(sentence_normalized)
+                unique_sentences.append(sentence)
+        
+        # If we have good sentences, create a structured answer
+        if unique_sentences:
+            # Start with a natural introduction
+            answer_parts = []
+            
+            # Check if question is asking "what is" or definition
+            if any(word in question_lower for word in ['what is', 'what are', 'define', 'definition', 'explain']):
+                # For definition questions, start directly
+                answer_parts.append(unique_sentences[0])
+                if len(unique_sentences) > 1:
+                    answer_parts.extend(unique_sentences[1:3])  # Add 2 more key points
+            else:
+                # For other questions, create a more structured response
+                answer_parts.append(unique_sentences[0])
+                
+                # Group related sentences
+                if len(unique_sentences) > 1:
+                    for sentence in unique_sentences[1:6]:  # Add up to 5 more sentences
+                        # Avoid repetition
+                        if not any(sentence.lower()[:50] in prev.lower() for prev in answer_parts):
+                            answer_parts.append(sentence)
+            
+            # Join sentences naturally
+            answer = ". ".join(answer_parts)
+            
+            # Clean up
+            answer = re.sub(r'\.{2,}', '.', answer)  # Remove multiple periods
+            answer = re.sub(r'\s+', ' ', answer)  # Normalize whitespace
+            
+            # Ensure it ends with proper punctuation
+            if not answer.rstrip().endswith(('.', '!', '?')):
+                answer = answer.rstrip() + '.'
+            
+            # Limit length for readability
+            if len(answer) > 800:
+                # Truncate at last complete sentence before 800 chars
+                truncated = answer[:800]
+                last_period = truncated.rfind('.')
+                if last_period > 600:  # Only truncate if we have a good sentence break
+                    answer = truncated[:last_period + 1]
+                else:
+                    answer = truncated + "..."
+            
+            return answer
+        else:
+            # Fallback: return first chunk if synthesis fails
+            return chunks[0][:500] + ("..." if len(chunks[0]) > 500 else "")
+    
     def _calculate_confidence(
         self, 
         answer: str, 
         sources: List[Document], 
         query: str
     ) -> float:
-        """Calculate confidence score for the answer."""
-        if not answer or not sources:
+        """Calculate confidence score using cosine similarity between query and source embeddings.
+        
+        This provides a much more accurate measure of relevance than keyword matching.
+        """
+        if not answer or not sources or not self.embeddings:
             return 0.0
         
-        confidence = 0.0
-        
-        # 1. Source count (more sources = higher confidence)
-        source_count_score = min(len(sources) / 5.0, 1.0) * 0.3
-        confidence += source_count_score
-        
-        # 2. Answer length (reasonable length = higher confidence)
-        answer_length = len(answer)
-        if 50 <= answer_length <= 500:
-            confidence += 0.2
-        elif answer_length > 500:
-            confidence += 0.1
-        
-        # 3. Query-answer relevance (simple keyword overlap)
-        query_words = set(re.findall(r'\b\w{4,}\b', query.lower()))
-        answer_words = set(re.findall(r'\b\w{4,}\b', answer.lower()))
-        if query_words:
-            relevance = len(query_words & answer_words) / len(query_words)
-            confidence += relevance * 0.3
-        
-        # 4. Source quality (check if sources have good metadata)
-        quality_score = 0.0
-        for source in sources:
-            if source.metadata:
-                quality_score += 0.1
-        confidence += min(quality_score, 0.2)
-        
-        return min(confidence, 1.0)
+        try:
+            # Get query embedding
+            query_embedding = np.array(self.embeddings.embed_query(query))
+            
+            # Get embeddings for all source documents and calculate cosine similarity
+            similarities = []
+            for source in sources:
+                try:
+                    # Embed the source document content
+                    source_embedding = np.array(self.embeddings.embed_query(source.page_content[:512]))  # Limit length for efficiency
+                    
+                    # Calculate cosine similarity
+                    # Cosine similarity = dot(A, B) / (||A|| * ||B||)
+                    dot_product = np.dot(query_embedding, source_embedding)
+                    norm_query = np.linalg.norm(query_embedding)
+                    norm_source = np.linalg.norm(source_embedding)
+                    
+                    if norm_query > 0 and norm_source > 0:
+                        cosine_sim = dot_product / (norm_query * norm_source)
+                        # Cosine similarity ranges from -1 to 1, but with normalized embeddings it's typically 0-1
+                        # Clamp to [0, 1] range
+                        cosine_sim = max(0.0, min(1.0, cosine_sim))
+                        similarities.append(cosine_sim)
+                except Exception as e:
+                    # If embedding fails for a source, skip it
+                    print(f"Warning: Could not calculate similarity for source: {e}")
+                    continue
+            
+            if not similarities:
+                return 0.0
+            
+            # Use average similarity as confidence, but weight towards higher similarities
+            # This gives more weight to highly relevant sources
+            avg_similarity = np.mean(similarities)
+            max_similarity = np.max(similarities)
+            
+            # Combine average and max (60% max, 40% average) for better confidence
+            # This ensures that if at least one highly relevant source exists, confidence is higher
+            confidence = 0.6 * max_similarity + 0.4 * avg_similarity
+            
+            # Scale to 0-100% for display (cosine similarity with normalized embeddings is typically 0-1)
+            # Adjust scaling to make it more meaningful (0.5 similarity = 50%, 0.7 = 85%, etc.)
+            # Use a non-linear scaling to better represent quality
+            if confidence > 0.7:
+                # High similarity: scale more generously
+                confidence = 0.7 + (confidence - 0.7) * 0.6  # 0.7-1.0 maps to 0.7-0.88
+            elif confidence > 0.5:
+                # Medium similarity: linear mapping
+                confidence = 0.5 + (confidence - 0.5) * 0.6  # 0.5-0.7 maps to 0.5-0.62
+            else:
+                # Low similarity: scale down more
+                confidence = confidence * 0.8  # 0-0.5 maps to 0-0.4
+            
+            # Ensure it's between 0 and 1
+            confidence = max(0.0, min(1.0, confidence))
+            
+            return confidence
+            
+        except Exception as e:
+            print(f"Error calculating cosine similarity confidence: {e}")
+            # Fallback to simple heuristic if embedding calculation fails
+            return min(len(sources) / 5.0, 1.0) * 0.5
     
     def query(
         self, 
@@ -659,33 +926,35 @@ Provide a detailed and accurate answer based on the context provided:"""
                     print(f"QA chain error, falling back to retrieval: {e}")
                     # Fall through to retrieval-only mode
             
-            # Enhanced retrieval-only mode with better formatting
-            context_parts = []
-            for i, doc in enumerate(docs, 1):
-                chunk_info = f"[Source {i}]"
-                if doc.metadata:
-                    filename = doc.metadata.get('filename', 'Unknown')
-                    chunk_idx = doc.metadata.get('chunk_index', '?')
-                    total_chunks = doc.metadata.get('total_chunks', '?')
-                    chunk_info += f" (File: {filename}, Chunk {chunk_idx}/{total_chunks})"
-                context_parts.append(f"{chunk_info}\n{doc.page_content}")
+            # Enhanced retrieval-only mode with intelligent answer synthesis
+            # Extract and synthesize information from retrieved chunks
+            answer = self._synthesize_answer_from_chunks(question, docs)
             
-            context = "\n\n---\n\n".join(context_parts)
-            
-            # Create a better formatted answer
-            answer = f"Based on the uploaded documents:\n\n{context[:1500]}"
-            if len(context) > 1500:
-                answer += "\n\n[... more content available in sources ...]"
-            
+            # Format sources cleanly
             sources = []
+            seen_files = set()
             for doc in docs:
-                source_text = doc.page_content[:250] + "..." if len(doc.page_content) > 250 else doc.page_content
                 if doc.metadata:
                     filename = doc.metadata.get('filename', 'Unknown')
                     chunk_idx = doc.metadata.get('chunk_index', 'N/A')
                     total_chunks = doc.metadata.get('total_chunks', 'N/A')
-                    source_text += f"\n[File: {filename}, Chunk {chunk_idx}/{total_chunks}]"
-                sources.append(source_text)
+                    
+                    # Create clean source reference
+                    source_ref = f"{filename}"
+                    if chunk_idx != 'N/A' and chunk_idx != '?' and total_chunks != 'N/A':
+                        try:
+                            chunk_num = int(chunk_idx) + 1 if isinstance(chunk_idx, (int, str)) and str(chunk_idx).isdigit() else chunk_idx
+                            source_ref += f" (Section {chunk_num})"
+                        except:
+                            pass  # Skip if chunk_idx can't be converted
+                    
+                    # Avoid duplicate source entries
+                    if source_ref not in seen_files:
+                        seen_files.add(source_ref)
+                        source_text = doc.page_content[:200].strip()
+                        if len(doc.page_content) > 200:
+                            source_text += "..."
+                        sources.append(f"{source_text}\n— {source_ref}")
             
             # Calculate confidence for retrieval-only mode
             confidence = self._calculate_confidence(answer, docs, question)
@@ -721,6 +990,34 @@ Provide a detailed and accurate answer based on the context provided:"""
                 "enhanced": use_enhancements
             }
     
+    def delete_documents_by_metadata(self, metadata_filter: Dict[str, str]):
+        """Delete documents from vectorstore by metadata filter.
+        
+        Args:
+            metadata_filter: Dictionary of metadata key-value pairs to filter by
+        """
+        if self.vectorstore is None:
+            return
+        
+        try:
+            # Get all documents with matching metadata
+            # Chroma doesn't have direct delete by metadata, so we need to:
+            # 1. Get document IDs that match the filter
+            # 2. Delete them
+            
+            # Use get() with where filter to find matching documents
+            results = self.vectorstore.get(
+                where=metadata_filter
+            )
+            
+            if results and 'ids' in results and len(results['ids']) > 0:
+                # Delete the matching documents
+                self.vectorstore.delete(ids=results['ids'])
+                self.vectorstore.persist()
+                print(f"✓ Deleted {len(results['ids'])} document chunks matching metadata: {metadata_filter}")
+        except Exception as e:
+            print(f"⚠️ Warning: Could not delete documents by metadata: {e}")
+    
     def clear_documents(self, user_id: Optional[str] = None):
         """Clear all documents from the vectorstore."""
         import shutil
@@ -740,4 +1037,269 @@ Provide a detailed and accurate answer based on the context provided:"""
         """Clear conversation history for a specific user."""
         if user_id in self.conversation_history:
             del self.conversation_history[user_id]
+    
+    # =========================================================================
+    # 🚀 GREATEST RAG EVER - v2.0 Enhanced Methods
+    # =========================================================================
+    
+    def enhanced_query(
+        self,
+        question: str,
+        document_ids: Optional[List[str]] = None,
+        user_id: Optional[str] = None,
+        use_hyde: bool = True,
+        use_rrf: bool = True,
+        use_compression: bool = False,
+        include_evaluation: bool = True
+    ) -> dict:
+        """
+        Enhanced query with all v2.0 features.
+        
+        Args:
+            question: The question to ask
+            document_ids: Optional document filter
+            user_id: User ID for conversation context
+            use_hyde: Use HyDE (Hypothetical Document Embeddings)
+            use_rrf: Use Reciprocal Rank Fusion
+            use_compression: Use contextual compression
+            include_evaluation: Include RAGAS-style evaluation metrics
+        
+        Returns:
+            Enhanced response with answer, sources, confidence, and evaluation
+        """
+        if self.vectorstore is None:
+            return {
+                "answer": "No documents loaded. Please upload documents first.",
+                "sources": [],
+                "confidence": 0.0,
+                "evaluation": None,
+                "enhanced_features": []
+            }
+        
+        features_used = []
+        
+        try:
+            # Get conversation context
+            conversation_context = None
+            if user_id and user_id in self.conversation_history:
+                conversation_context = self.conversation_history[user_id]
+            
+            # 1. Query rewriting with context
+            enhanced_question = self._rewrite_query(question, conversation_context)
+            
+            # 2. Collect multiple retrieval results for RRF
+            retrieval_results = []
+            
+            # Standard semantic search
+            semantic_results = self._hybrid_search(
+                enhanced_question, k=15, document_ids=document_ids
+            )
+            retrieval_results.append(semantic_results)
+            
+            # Generate query variations
+            query_variations = self._generate_query_variations(enhanced_question)
+            for variation in query_variations[:2]:
+                var_results = self._hybrid_search(
+                    variation, k=10, document_ids=document_ids
+                )
+                retrieval_results.append(var_results)
+            
+            # 3. HyDE retrieval (if enabled)
+            if use_hyde and self.llm:
+                try:
+                    hypotheticals = hyde_generate_hypothetical(question, self.llm, 1)
+                    for hyp in hypotheticals:
+                        hyp_results = [(doc, score) for doc, score in 
+                                       self._hybrid_search(hyp, k=10, document_ids=document_ids)]
+                        if hyp_results:
+                            retrieval_results.append(hyp_results)
+                            features_used.append("HyDE")
+                except Exception as e:
+                    print(f"⚠️ HyDE retrieval failed: {e}")
+            
+            # 4. Apply RRF fusion (if multiple result sets)
+            if use_rrf and len(retrieval_results) > 1:
+                fused_results = reciprocal_rank_fusion(retrieval_results)
+                docs = [doc for doc, _ in fused_results[:10]]
+                features_used.append("RRF")
+            else:
+                # Just use first result set
+                docs = [doc for doc, _ in retrieval_results[0][:10]]
+            
+            # 5. Cross-encoder reranking
+            if docs:
+                docs = self._rerank_documents(enhanced_question, docs, top_k=5)
+                if self.cross_encoder:
+                    features_used.append("CrossEncoder")
+            
+            # 6. Contextual compression (optional)
+            if use_compression and docs:
+                try:
+                    docs = contextual_compression(
+                        question, docs, self.embeddings, 0.3
+                    )
+                    features_used.append("Compression")
+                except Exception as e:
+                    print(f"⚠️ Compression failed: {e}")
+            
+            if not docs:
+                return {
+                    "answer": "No relevant information found.",
+                    "sources": [],
+                    "confidence": 0.0,
+                    "evaluation": None,
+                    "enhanced_features": features_used
+                }
+            
+            # 7. Generate answer
+            if self.qa_chain and self.llm:
+                try:
+                    result = self.qa_chain.invoke({"query": enhanced_question})
+                    answer = result.get("result", "")
+                    source_docs = result.get("source_documents", docs)
+                except:
+                    answer = self._synthesize_answer_from_chunks(question, docs)
+                    source_docs = docs
+            else:
+                answer = self._synthesize_answer_from_chunks(question, docs)
+                source_docs = docs
+            
+            # 8. Format sources
+            sources = []
+            for doc in source_docs[:5]:
+                source_text = doc.page_content[:250] + "..." if len(doc.page_content) > 250 else doc.page_content
+                filename = doc.metadata.get('filename', 'Unknown')
+                sources.append(f"{source_text}\n— {filename}")
+            
+            # 9. Calculate confidence
+            confidence = self._calculate_confidence(answer, source_docs, question)
+            
+            # 10. RAGAS-style evaluation (if requested)
+            evaluation = None
+            if include_evaluation:
+                evaluation = self._evaluate_response(
+                    question, answer, [doc.page_content for doc in source_docs]
+                )
+                features_used.append("Evaluation")
+            
+            # Update conversation history
+            if user_id:
+                self.conversation_history[user_id].append({"role": "user", "content": question})
+                self.conversation_history[user_id].append({"role": "assistant", "content": answer})
+                if len(self.conversation_history[user_id]) > 20:
+                    self.conversation_history[user_id] = self.conversation_history[user_id][-20:]
+            
+            return {
+                "answer": answer,
+                "sources": sources,
+                "num_sources": len(sources),
+                "confidence": round(confidence, 2),
+                "evaluation": evaluation,
+                "enhanced_features": features_used
+            }
+            
+        except Exception as e:
+            return {
+                "answer": f"Error: {str(e)}",
+                "sources": [],
+                "confidence": 0.0,
+                "evaluation": None,
+                "enhanced_features": features_used
+            }
+    
+    def _evaluate_response(
+        self,
+        question: str,
+        answer: str,
+        contexts: List[str]
+    ) -> Dict[str, float]:
+        """
+        RAGAS-inspired evaluation without external dependencies.
+        
+        Metrics:
+        - context_relevancy: How relevant are contexts to the question?
+        - answer_faithfulness: Is the answer grounded in contexts?
+        - answer_relevancy: How relevant is the answer to the question?
+        """
+        try:
+            # Use cached embeddings for efficiency
+            q_emb = self.embedding_cache.get(question, self.embeddings.embed_query)
+            a_emb = self.embedding_cache.get(answer[:500], self.embeddings.embed_query)
+            
+            # Context relevancy
+            context_scores = []
+            for ctx in contexts[:5]:
+                ctx_emb = self.embedding_cache.get(ctx[:300], self.embeddings.embed_query)
+                sim = np.dot(q_emb, ctx_emb) / (np.linalg.norm(q_emb) * np.linalg.norm(ctx_emb) + 1e-8)
+                context_scores.append(max(0, sim))
+            context_relevancy = np.mean(context_scores) if context_scores else 0.0
+            
+            # Answer relevancy
+            answer_relevancy = np.dot(q_emb, a_emb) / (np.linalg.norm(q_emb) * np.linalg.norm(a_emb) + 1e-8)
+            answer_relevancy = max(0, answer_relevancy)
+            
+            # Answer faithfulness (word overlap with contexts)
+            combined_context = " ".join(contexts).lower()
+            answer_words = set(re.findall(r'\b\w{4,}\b', answer.lower()))
+            context_words = set(re.findall(r'\b\w{4,}\b', combined_context))
+            faithfulness = len(answer_words & context_words) / max(len(answer_words), 1)
+            
+            # Overall score
+            overall = 0.3 * context_relevancy + 0.4 * faithfulness + 0.3 * answer_relevancy
+            
+            return {
+                "context_relevancy": round(float(context_relevancy), 3),
+                "answer_faithfulness": round(float(faithfulness), 3),
+                "answer_relevancy": round(float(answer_relevancy), 3),
+                "overall_score": round(float(overall), 3)
+            }
+        except Exception as e:
+            print(f"⚠️ Evaluation failed: {e}")
+            return {
+                "context_relevancy": 0.0,
+                "answer_faithfulness": 0.0,
+                "answer_relevancy": 0.0,
+                "overall_score": 0.0
+            }
+    
+    def detect_hallucination(self, answer: str, sources: List[Document]) -> Dict[str, Any]:
+        """
+        Detect potential hallucinations in the answer.
+        
+        Returns risk assessment for each sentence.
+        """
+        source_text = " ".join([doc.page_content for doc in sources]).lower()
+        
+        sentences = re.split(r'[.!?]+', answer)
+        risky_sentences = []
+        
+        for sentence in sentences:
+            if len(sentence.strip()) < 15:
+                continue
+            
+            words = set(re.findall(r'\b\w{4,}\b', sentence.lower()))
+            stopwords = {'this', 'that', 'these', 'those', 'with', 'from', 'have', 'been', 'which', 'would', 'could', 'should'}
+            words -= stopwords
+            
+            if not words:
+                continue
+            
+            covered = sum(1 for w in words if w in source_text)
+            coverage = covered / len(words)
+            
+            if coverage < 0.3:
+                risky_sentences.append({
+                    "sentence": sentence.strip(),
+                    "coverage": round(coverage, 2),
+                    "risk": "HIGH" if coverage < 0.15 else "MEDIUM"
+                })
+        
+        total_sentences = len([s for s in sentences if len(s.strip()) >= 15])
+        grounding = 1 - (len(risky_sentences) / max(total_sentences, 1))
+        
+        return {
+            "has_risk": len(risky_sentences) > 0,
+            "risky_sentences": risky_sentences,
+            "overall_grounding": round(grounding, 2)
+        }
 

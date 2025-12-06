@@ -35,6 +35,7 @@ class User(Base):
     phone = Column(String, unique=True, index=True, nullable=True)
     auth_type = Column(String, nullable=True)  # 'email', 'phone', 'google', 'anonymous'
     google_id = Column(String, unique=True, index=True, nullable=True)
+    password_hash = Column(String, nullable=True)  # Hashed password for email auth
     is_verified = Column(String, default="false")  # 'true', 'false'
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active = Column(DateTime, default=datetime.utcnow)

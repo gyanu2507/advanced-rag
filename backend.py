@@ -1,13 +1,14 @@
 """
 FastAPI backend for the document Q&A system.
 """
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 import os
 import tempfile
 import time
+import asyncio
 from sqlalchemy.orm import Session
 from rag_system import RAGSystem
 from document_processor import DocumentProcessor
@@ -20,29 +21,73 @@ from database import (
 )
 from auth import (
     authenticate_with_google, verify_jwt_token, initiate_phone_verification,
-    verify_phone_otp, generate_jwt_token
+    verify_phone_otp, generate_jwt_token, create_user_with_email_password,
+    authenticate_with_email_password
 )
 
 app = FastAPI(title="AI Document Q&A API")
+
+# Periodic auto-purge (runs every hour)
+import asyncio
+
+async def periodic_purge():
+    """Run auto-purge every hour."""
+    while True:
+        await asyncio.sleep(3600)  # Wait 1 hour
+        try:
+            db = next(get_db())
+            result = purge_all_old_data(db, days=7)
+            if result['documents_deleted'] > 0 or result['queries_deleted'] > 0:
+                print(f"🔄 Periodic purge: {result['documents_deleted']} docs, {result['queries_deleted']} queries deleted")
+            db.close()
+        except Exception as e:
+            print(f"⚠️ Periodic purge error: {e}")
+
+async def periodic_purge():
+    """Run auto-purge every hour in the background."""
+    while True:
+        await asyncio.sleep(3600)  # Wait 1 hour
+        try:
+            db = next(get_db())
+            result = purge_all_old_data(db, days=7)
+            if result['documents_deleted'] > 0 or result['queries_deleted'] > 0:
+                print(f"🔄 Periodic purge: {result['documents_deleted']} docs, {result['queries_deleted']} queries deleted")
+            db.close()
+        except Exception as e:
+            print(f"⚠️ Periodic purge error: {e}")
 
 # Initialize database on startup
 @app.on_event("startup")
 async def startup_event():
     init_db()
     print("✓ Database ready")
-    # Auto-purge old data on startup
+    # Auto-purge old data on startup (runs automatically)
     try:
         db = next(get_db())
         result = purge_all_old_data(db, days=7)
-        print(f"✓ Auto-purged: {result['documents_deleted']} docs, {result['queries_deleted']} queries")
+        if result['documents_deleted'] > 0 or result['queries_deleted'] > 0:
+            print(f"✓ Auto-purged: {result['documents_deleted']} docs, {result['queries_deleted']} queries (older than 7 days)")
+        else:
+            print("✓ Auto-purge: No old data to clean")
         db.close()
     except Exception as e:
         print(f"⚠️ Auto-purge error: {e}")
+    
+    # Start periodic purge task (runs every hour automatically)
+    asyncio.create_task(periodic_purge())
+    print("✓ Periodic auto-purge started (runs every hour automatically)")
 
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -81,6 +126,36 @@ class QueryResponse(BaseModel):
     enhanced: Optional[bool] = False
 
 
+# 🚀 GREATEST RAG EVER - v2.0 Enhanced Models
+class EnhancedQueryRequest(BaseModel):
+    """Request model for enhanced RAG query with all v2.0 features."""
+    question: str
+    user_id: Optional[str] = "default"
+    document_ids: Optional[List[int]] = None
+    use_hyde: bool = True       # Hypothetical Document Embeddings
+    use_rrf: bool = True        # Reciprocal Rank Fusion
+    use_compression: bool = False  # Contextual compression
+    include_evaluation: bool = True  # RAGAS-style metrics
+
+
+class EvaluationMetrics(BaseModel):
+    """RAGAS-inspired evaluation metrics."""
+    context_relevancy: float
+    answer_faithfulness: float
+    answer_relevancy: float
+    overall_score: float
+
+
+class EnhancedQueryResponse(BaseModel):
+    """Enhanced response with evaluation metrics and feature tracking."""
+    answer: str
+    sources: list
+    num_sources: Optional[int] = None
+    confidence: float = 0.0
+    evaluation: Optional[EvaluationMetrics] = None
+    enhanced_features: List[str] = []
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
@@ -94,9 +169,12 @@ async def upload_document(
     db: Session = Depends(get_db)
 ):
     """Upload and process a document for a specific user."""
+    print(f"📤 Upload request: filename={file.filename}, user_id={user_id}")
+    
     # Validate file type
     allowed_extensions = ['.pdf', '.txt', '.docx', '.md', '.markdown', '.csv', '.json', '.html', '.htm', '.rtf', '.xlsx', '.xls', '.pptx']
     file_ext = os.path.splitext(file.filename)[1].lower()
+    print(f"   File extension: {file_ext}")
     
     if file_ext not in allowed_extensions:
         raise HTTPException(
@@ -112,8 +190,10 @@ async def upload_document(
         file_size = len(content)
     
     try:
+        print(f"   Processing file: {tmp_file_path}")
         # Process document
         text = processor.process_file(tmp_file_path)
+        print(f"   Extracted {len(text)} characters")
         
         if not text or len(text.strip()) < 10:
             raise HTTPException(
@@ -122,9 +202,11 @@ async def upload_document(
             )
         
         # Get or create user in database
+        print(f"   Getting/creating user: {user_id}")
         user = get_or_create_user(db, user_id)
         
         # Save document metadata to database first to get document_id
+        print(f"   Creating document record...")
         doc_record = create_document_record(
             db=db,
             user_id=user_id,
@@ -135,12 +217,15 @@ async def upload_document(
         )
         
         # Add to user-specific RAG system with document_id in metadata
+        print(f"   Getting RAG system for user: {user_id}")
         rag_system = get_rag_system(user_id)
+        print(f"   Adding documents to RAG system...")
         rag_system.add_documents(
             texts=[text],
             metadatas=[{"filename": file.filename, "user_id": user_id, "document_id": str(doc_record.id)}]
         )
         
+        print(f"✅ Upload successful: document_id={doc_record.id}")
         return {
             "status": "success",
             "message": f"Document '{file.filename}' processed successfully for user {user_id}",
@@ -149,13 +234,24 @@ async def upload_document(
             "document_id": doc_record.id
         }
     
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Log the full error for debugging
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"❌ Upload error: {str(e)}")
+        print(f"📋 Full traceback:\n{error_details}")
+        raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
     
     finally:
         # Clean up temp file
-        if os.path.exists(tmp_file_path):
-            os.unlink(tmp_file_path)
+        if 'tmp_file_path' in locals() and os.path.exists(tmp_file_path):
+            try:
+                os.unlink(tmp_file_path)
+            except Exception as cleanup_error:
+                print(f"⚠️ Warning: Could not delete temp file {tmp_file_path}: {cleanup_error}")
 
 
 @app.post("/query", response_model=QueryResponse)
@@ -206,6 +302,118 @@ async def query_documents(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# 🚀 GREATEST RAG EVER - v2.0 Enhanced Query Endpoint
+@app.post("/query/enhanced", response_model=EnhancedQueryResponse)
+async def enhanced_query_documents(
+    request: EnhancedQueryRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Enhanced query with all v2.0 features:
+    - HyDE (Hypothetical Document Embeddings)
+    - RRF (Reciprocal Rank Fusion)
+    - Cross-encoder reranking
+    - Contextual compression (optional)
+    - RAGAS-style evaluation metrics
+    """
+    if not request.question or not request.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+    
+    start_time = time.time()
+    try:
+        user_id = request.user_id or "default"
+        get_or_create_user(db, user_id)
+        
+        rag_system = get_rag_system(user_id)
+        
+        # Convert document IDs
+        document_ids = [str(doc_id) for doc_id in request.document_ids] if request.document_ids else None
+        
+        # Use enhanced query method
+        result = rag_system.enhanced_query(
+            question=request.question,
+            document_ids=document_ids,
+            user_id=user_id,
+            use_hyde=request.use_hyde,
+            use_rrf=request.use_rrf,
+            use_compression=request.use_compression,
+            include_evaluation=request.include_evaluation
+        )
+        
+        response_time = time.time() - start_time
+        
+        # Save to database
+        create_query_record(
+            db=db,
+            user_id=user_id,
+            question=request.question,
+            answer=result["answer"],
+            response_time=response_time
+        )
+        
+        # Build response
+        evaluation = None
+        if result.get("evaluation"):
+            evaluation = EvaluationMetrics(**result["evaluation"])
+        
+        return EnhancedQueryResponse(
+            answer=result["answer"],
+            sources=result.get("sources", []),
+            num_sources=result.get("num_sources", len(result.get("sources", []))),
+            confidence=result.get("confidence", 0.0),
+            evaluation=evaluation,
+            enhanced_features=result.get("enhanced_features", [])
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/users/{user_id}/documents/{document_id}")
+async def delete_document(
+    user_id: str,
+    document_id: int,
+    db: Session = Depends(get_db)
+):
+    """Delete a specific document for a user."""
+    try:
+        print(f"🗑️ Delete request: user_id={user_id}, document_id={document_id}")
+        
+        # Get the document
+        document = db.query(Document).filter(
+            Document.id == document_id,
+            Document.user_id == user_id
+        ).first()
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Remove from RAG system (filter by document_id in metadata)
+        rag_system = get_rag_system(user_id)
+        try:
+            # Delete document chunks from vectorstore by document_id metadata
+            rag_system.delete_documents_by_metadata({"document_id": str(document_id)})
+            print(f"✓ Removed document chunks from vectorstore")
+        except Exception as e:
+            print(f"⚠️ Warning: Could not remove from vectorstore: {e}")
+            # Continue with database deletion even if vectorstore deletion fails
+        
+        # Delete from database
+        db.delete(document)
+        db.commit()
+        
+        print(f"✅ Document deleted: {document.filename}")
+        return {
+            "status": "success",
+            "message": f"Document '{document.filename}' deleted successfully",
+            "document_id": document_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.delete("/clear")
 async def clear_documents(
     user_id: str = "default",
@@ -235,6 +443,27 @@ async def clear_documents(
             "queries_deleted": query_count
         }
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/users/{user_id}/purge")
+async def purge_user_data(
+    user_id: str,
+    days: int = Query(7, ge=1, le=365),
+    db: Session = Depends(get_db)
+):
+    """Manually purge old data for a user."""
+    try:
+        print(f"🧹 Purging old data for user {user_id}, older than {days} days")
+        result = purge_old_data(db, user_id, days)
+        print(f"✅ Purged: {result.get('documents_deleted', 0)} docs, {result.get('queries_deleted', 0)} queries")
+        return {
+            "status": "success",
+            "message": f"Purged data older than {days} days",
+            **result
+        }
+    except Exception as e:
+        print(f"❌ Purge error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -392,6 +621,11 @@ class PhoneOTPVerifyRequest(BaseModel):
     code: str
 
 
+class EmailPasswordRequest(BaseModel):
+    email: str
+    password: str
+
+
 @app.post("/auth/google")
 async def google_auth(
     request: GoogleAuthRequest,
@@ -540,6 +774,65 @@ async def get_google_config():
         "enabled": bool(client_id and client_secret),
         "configured": bool(client_id)
     }
+
+
+@app.post("/auth/email/signup")
+async def signup_with_email(
+    request: EmailPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """Sign up with email and password."""
+    try:
+        # Validate email format
+        import re
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, request.email):
+            raise HTTPException(status_code=400, detail="Invalid email format")
+        
+        # Validate password strength
+        if len(request.password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+        
+        user = create_user_with_email_password(db, request.email, request.password)
+        if not user:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        
+        # Generate JWT token
+        jwt_token = generate_jwt_token(user.user_id, user.email)
+        
+        return {
+            "status": "success",
+            "message": "Account created successfully",
+            "token": jwt_token,
+            "user_id": user.user_id,
+            "user": {
+                "user_id": user.user_id,
+                "email": user.email,
+                "is_verified": user.is_verified
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/auth/email/login")
+async def login_with_email(
+    request: EmailPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """Login with email and password."""
+    try:
+        result = authenticate_with_email_password(db, request.email, request.password)
+        if result:
+            return result
+        else:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
