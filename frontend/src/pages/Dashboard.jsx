@@ -996,6 +996,15 @@ const Dashboard = () => {
     );
   };
 
+  const clearChatHistory = () => {
+    if (window.confirm('Are you sure you want to clear chat history?')) {
+      setMessages([]);
+      if (user && user.user_id) {
+        localStorage.removeItem(`chat_history_${user.user_id}`);
+      }
+    }
+  };
+
   const handleDeleteDocument = async (docId, filename) => {
     if (!window.confirm(`Are you sure you want to delete "${filename}"? This action cannot be undone.`)) {
       return;
@@ -1244,6 +1253,51 @@ const Dashboard = () => {
 
         {/* Chat Section */}
         <ChatContainer style={{ background: colors.cardBg, boxShadow: colors.shadow }}>
+          {/* Chat Header */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '1rem 1.5rem',
+            borderBottom: `1px solid ${colors.cardBorder || '#e5e7eb'}`
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <MessageSquare size={20} color="#667eea" />
+              <span style={{ fontWeight: 600, color: colors.text }}>Chat</span>
+              {messages.length > 0 && (
+                <span style={{
+                  fontSize: '0.75rem',
+                  background: isDarkMode ? '#374151' : '#f3f4f6',
+                  padding: '0.125rem 0.5rem',
+                  borderRadius: '0.75rem',
+                  color: colors.textMuted
+                }}>
+                  {messages.length} messages
+                </span>
+              )}
+            </div>
+            {messages.length > 0 && (
+              <button
+                onClick={clearChatHistory}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                  padding: '0.375rem 0.75rem',
+                  background: 'transparent',
+                  border: '1px solid #dc2626',
+                  borderRadius: '0.375rem',
+                  color: '#dc2626',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                }}
+              >
+                <Trash2 size={14} />
+                Clear
+              </button>
+            )}
+          </div>
           <MessagesArea style={{ background: colors.cardBg }}>
             {messages.length === 0 ? (
               <EmptyChatState>
