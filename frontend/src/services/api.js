@@ -64,11 +64,11 @@ export const documentAPI = {
     formData.append('file', file);
     formData.append('user_id', userId);
 
-    console.log('Upload API call:', { 
-      filename: file.name, 
-      fileSize: file.size, 
+    console.log('Upload API call:', {
+      filename: file.name,
+      fileSize: file.size,
       fileType: file.type,
-      userId 
+      userId
     });
 
     const response = await api.post('/upload', formData, {
@@ -94,17 +94,17 @@ export const documentAPI = {
     // Backend returns { user_id, count, documents: [...] }
     // Extract the documents array
     const data = response.data;
-    
+
     // If data has a documents property, use it
     if (data && Array.isArray(data.documents)) {
       return data.documents;
     }
-    
+
     // If data itself is an array, use it
     if (Array.isArray(data)) {
       return data;
     }
-    
+
     // Otherwise return empty array
     console.warn('Unexpected API response format:', data);
     return [];
@@ -128,6 +128,20 @@ export const queryAPI = {
       question,
       user_id: userId,
       document_ids: documentIds,
+    });
+    return response.data;
+  },
+
+  // Enhanced query with RAGAS metrics
+  enhancedQuery: async (question, userId, documentIds = null, options = {}) => {
+    const response = await api.post('/query/enhanced', {
+      question,
+      user_id: userId,
+      document_ids: documentIds,
+      use_hyde: options.useHyde ?? true,
+      use_rrf: options.useRrf ?? true,
+      use_compression: options.useCompression ?? false,
+      include_evaluation: options.includeEvaluation ?? true,
     });
     return response.data;
   },

@@ -543,116 +543,100 @@ Provide a detailed, well-structured answer:"""
         return [doc for doc, _ in scored_docs[:top_k]]
     
     def _synthesize_answer_from_chunks(self, question: str, docs: List[Document]) -> str:
-        """Intelligently synthesize an answer from retrieved document chunks.
+        """Synthesize a proper RAG-style answer with inline citations.
         
-        This creates a natural, coherent answer even without an LLM by:
-        1. Extracting relevant information
-        2. Removing redundancy
-        3. Organizing information logically
-        4. Creating a conversational response
+        Creates structured response that clearly shows:
+        1. Information is from uploaded documents
+        2. Inline citations [1], [2], etc.
+        3. Organized by topic/theme
         """
         if not docs:
-            return "I couldn't find relevant information in the uploaded documents to answer your question."
+            return "❌ No relevant information found in your uploaded documents for this question."
         
-        # Extract all relevant text chunks
-        chunks = [doc.page_content.strip() for doc in docs if doc.page_content.strip()]
+        # Map documents to citation numbers
+        doc_citations = {}  # content_key -> citation_num
+        citation_sources = {}  # citation_num -> filename
         
-        if not chunks:
-            return "I found some documents, but they don't contain readable text to answer your question."
+        for i, doc in enumerate(docs):
+            content_key = doc.page_content[:100]
+            citation_num = i + 1
+            doc_citations[content_key] = citation_num
+            filename = doc.metadata.get('filename', f'Source {citation_num}')
+            citation_sources[citation_num] = filename
         
-        # Combine and clean chunks
-        combined_text = " ".join(chunks)
-        
-        # Remove excessive whitespace and normalize
-        combined_text = re.sub(r'\s+', ' ', combined_text)
-        combined_text = re.sub(r'\.{3,}', '...', combined_text)
-        
-        # Extract key sentences that are most relevant to the question
+        # Extract and score sentences with their source
         question_lower = question.lower()
         question_keywords = set(re.findall(r'\b\w{4,}\b', question_lower))
         
-        # Split into sentences
-        sentences = re.split(r'[.!?]+', combined_text)
-        sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
+        scored_items = []  # (score, sentence, citation_num)
         
-        # Score sentences by relevance
-        scored_sentences = []
-        for sentence in sentences:
-            sentence_lower = sentence.lower()
-            sentence_words = set(re.findall(r'\b\w{4,}\b', sentence_lower))
+        for doc in docs:
+            content_key = doc.page_content[:100]
+            citation_num = doc_citations.get(content_key, 1)
             
-            # Calculate relevance score
-            if question_keywords:
-                overlap = len(question_keywords & sentence_words) / len(question_keywords)
-            else:
-                overlap = 0.5  # Default if no keywords
-            
-            # Prefer longer, more informative sentences
-            length_score = min(len(sentence) / 200, 1.0)
-            
-            total_score = overlap * 0.7 + length_score * 0.3
-            scored_sentences.append((total_score, sentence))
-        
-        # Sort by relevance and take top sentences
-        scored_sentences.sort(reverse=True, key=lambda x: x[0])
-        top_sentences = [s for _, s in scored_sentences[:8]]  # Top 8 most relevant
-        
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_sentences = []
-        for sentence in top_sentences:
-            sentence_normalized = sentence.lower()[:100]  # Use first 100 chars for deduplication
-            if sentence_normalized not in seen:
-                seen.add(sentence_normalized)
-                unique_sentences.append(sentence)
-        
-        # If we have good sentences, create a structured answer
-        if unique_sentences:
-            # Start with a natural introduction
-            answer_parts = []
-            
-            # Check if question is asking "what is" or definition
-            if any(word in question_lower for word in ['what is', 'what are', 'define', 'definition', 'explain']):
-                # For definition questions, start directly
-                answer_parts.append(unique_sentences[0])
-                if len(unique_sentences) > 1:
-                    answer_parts.extend(unique_sentences[1:3])  # Add 2 more key points
-            else:
-                # For other questions, create a more structured response
-                answer_parts.append(unique_sentences[0])
+            sentences = re.split(r'[.!?]+', doc.page_content)
+            for sentence in sentences:
+                sentence = sentence.strip()
+                if len(sentence) < 25:
+                    continue
                 
-                # Group related sentences
-                if len(unique_sentences) > 1:
-                    for sentence in unique_sentences[1:6]:  # Add up to 5 more sentences
-                        # Avoid repetition
-                        if not any(sentence.lower()[:50] in prev.lower() for prev in answer_parts):
-                            answer_parts.append(sentence)
-            
-            # Join sentences naturally
-            answer = ". ".join(answer_parts)
-            
-            # Clean up
-            answer = re.sub(r'\.{2,}', '.', answer)  # Remove multiple periods
-            answer = re.sub(r'\s+', ' ', answer)  # Normalize whitespace
-            
-            # Ensure it ends with proper punctuation
-            if not answer.rstrip().endswith(('.', '!', '?')):
-                answer = answer.rstrip() + '.'
-            
-            # Limit length for readability
-            if len(answer) > 800:
-                # Truncate at last complete sentence before 800 chars
-                truncated = answer[:800]
-                last_period = truncated.rfind('.')
-                if last_period > 600:  # Only truncate if we have a good sentence break
-                    answer = truncated[:last_period + 1]
+                sentence_words = set(re.findall(r'\b\w{4,}\b', sentence.lower()))
+                if question_keywords:
+                    overlap = len(question_keywords & sentence_words) / len(question_keywords)
                 else:
-                    answer = truncated + "..."
+                    overlap = 0.5
+                
+                length_score = min(len(sentence) / 150, 1.0)
+                total_score = overlap * 0.7 + length_score * 0.3
+                
+                if total_score > 0.2:  # Only include relevant sentences
+                    scored_items.append((total_score, sentence, citation_num))
+        
+        if not scored_items:
+            return "📄 Found documents but couldn't extract specific information for your question."
+        
+        # Sort by relevance
+        scored_items.sort(reverse=True, key=lambda x: x[0])
+        
+        # Build answer with citations - deduplicate
+        seen_sentences = set()
+        answer_lines = []
+        used_citations = set()
+        
+        for score, sentence, citation_num in scored_items[:6]:  # Top 6 points
+            sentence_key = sentence.lower()[:80]
+            if sentence_key in seen_sentences:
+                continue
+            seen_sentences.add(sentence_key)
             
-            return answer
-        else:
-            # Fallback: return first chunk if synthesis fails
-            return chunks[0][:500] + ("..." if len(chunks[0]) > 500 else "")
+            # Clean sentence and add citation
+            clean_sentence = sentence.strip()
+            if not clean_sentence.endswith(('.', '!', '?')):
+                clean_sentence += '.'
+            
+            # Add inline citation
+            answer_lines.append(f"• {clean_sentence} [{citation_num}]")
+            used_citations.add(citation_num)
+        
+        if not answer_lines:
+            return "📄 Found related content but couldn't synthesize a clear answer."
+        
+        # Build structured response with markdown for attractive rendering
+        response_parts = []
+        
+        # Header with emoji
+        response_parts.append("## 📄 Based on your uploaded documents\n")
+        
+        # Main points with citations
+        response_parts.append("\n".join(answer_lines))
+        
+        # Sources footer with styling
+        response_parts.append("\n\n---\n**📚 Sources:**")
+        for cit_num in sorted(used_citations):
+            source_name = citation_sources.get(cit_num, f"Source {cit_num}")
+            response_parts.append(f"  `[{cit_num}]` *{source_name}*")
+        
+        return "\n".join(response_parts)
     
     def _calculate_confidence(
         self, 

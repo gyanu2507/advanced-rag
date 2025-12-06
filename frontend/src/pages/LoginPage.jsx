@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Lock, Phone, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Loader2, Eye, EyeOff, Moon, Sun } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { authAPI } from '../services/api';
 import styled from 'styled-components';
 
@@ -31,7 +32,10 @@ const Card = styled.div`
 const Title = styled.h1`
   font-size: 1.875rem;
   font-weight: 700;
-  color: #111827;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   margin-bottom: 0.5rem;
   text-align: center;
 `;
@@ -170,8 +174,12 @@ const Link = styled.a`
 
 const Button = styled.button`
   width: 100%;
-  padding: 0.625rem 1rem;
-  background: ${props => props.variant === 'primary' ? '#111827' : props.variant === 'secondary' ? 'transparent' : '#f3f4f6'};
+  padding: 0.75rem 1rem;
+  background: ${props => props.variant === 'primary'
+    ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+    : props.variant === 'secondary'
+      ? 'transparent'
+      : '#f3f4f6'};
   color: ${props => props.variant === 'primary' ? 'white' : props.variant === 'secondary' ? '#374151' : '#374151'};
   border: ${props => props.variant === 'secondary' ? '2px solid #d1d5db' : 'none'};
   border-radius: 0.5rem;
@@ -183,19 +191,27 @@ const Button = styled.button`
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  box-shadow: ${props => props.variant === 'primary' ? '0 4px 6px -1px rgba(0, 0, 0, 0.1)' : 'none'};
   
   &:hover {
-    background: ${props => props.variant === 'primary' ? '#1f2937' : props.variant === 'secondary' ? '#f9fafb' : '#e5e7eb'};
+    transform: ${props => props.variant === 'primary' ? 'translateY(-1px)' : 'none'};
+    box-shadow: ${props => props.variant === 'primary' ? '0 10px 15px -3px rgba(0, 0, 0, 0.1)' : 'none'};
+    background: ${props => props.variant === 'primary'
+    ? 'linear-gradient(135deg, #5a6fd6 0%, #6a4190 100%)'
+    : props.variant === 'secondary'
+      ? '#f9fafb'
+      : '#e5e7eb'};
   }
   
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+    transform: none;
   }
   
   &:focus {
     outline: none;
-    box-shadow: 0 0 0 2px ${props => props.variant === 'primary' ? 'rgba(17, 24, 39, 0.2)' : 'rgba(209, 213, 219, 0.5)'};
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
   }
 `;
 
@@ -268,6 +284,7 @@ const InfoBox = styled.div`
 
 const LoginPage = () => {
   const { login, guestLogin, user, isAuthenticated } = useAuth();
+  const { isDarkMode, toggleTheme, colors } = useTheme();
   const navigate = useNavigate();
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
@@ -412,7 +429,7 @@ const LoginPage = () => {
       if (buttonElement) {
         // Clear any existing button
         buttonElement.innerHTML = '';
-        
+
         window.google.accounts.id.initialize({
           client_id: googleConfig.client_id,
           callback: async (response) => {
@@ -427,7 +444,7 @@ const LoginPage = () => {
             }
           },
         });
-        
+
         window.google.accounts.id.renderButton(
           buttonElement,
           {
@@ -444,17 +461,40 @@ const LoginPage = () => {
   }, [googleConfig, login]);
 
   return (
-    <Container>
+    <Container style={{ background: colors.bg }}>
+      {/* Theme Toggle - Top Right */}
+      <motion.button
+        onClick={toggleTheme}
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.9 }}
+        style={{
+          position: 'absolute',
+          top: '1rem',
+          right: '1rem',
+          padding: '0.75rem',
+          background: isDarkMode ? '#374151' : 'white',
+          border: 'none',
+          borderRadius: '0.75rem',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+        }}
+      >
+        {isDarkMode ? <Sun size={22} color="#fbbf24" /> : <Moon size={22} color="#6b7280" />}
+      </motion.button>
+
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.3 }}
         style={{ width: '100%', maxWidth: '28rem', margin: '0 auto' }}
       >
-        <Card>
-          <Title>Welcome Back</Title>
-          <Subtitle>
-            {mode === 'login' ? 'Sign in to your account' : 'Create a new account'}
+        <Card style={{ background: colors.cardBg, boxShadow: colors.shadow }}>
+          <Title>{mode === 'login' ? 'Welcome Back' : 'Create Account'}</Title>
+          <Subtitle style={{ color: colors.textMuted }}>
+            {mode === 'login' ? 'Sign in to continue to your documents' : 'Join us to start managing your documents'}
           </Subtitle>
 
           <ToggleContainer>
@@ -539,7 +579,7 @@ const LoginPage = () => {
                   <span>Processing...</span>
                 </>
               ) : (
-                <span>Sign In</span>
+                <span>{mode === 'login' ? 'Sign In' : 'Create Account'}</span>
               )}
             </Button>
           </Form>
@@ -551,24 +591,24 @@ const LoginPage = () => {
           </Divider>
 
           {googleConfig?.client_id && googleConfig?.enabled ? (
-            <div 
-              id="google-signin-button" 
-              style={{ 
-                marginBottom: '1.5rem', 
-                display: 'flex', 
+            <div
+              id="google-signin-button"
+              style={{
+                marginBottom: '1.5rem',
+                display: 'flex',
                 justifyContent: 'center',
                 minHeight: '40px'
               }}
             />
           ) : (
-            <div style={{ 
-              marginBottom: '1.5rem', 
-              padding: '0.75rem', 
-              background: '#f3f4f6', 
-              borderRadius: '0.5rem', 
-              textAlign: 'center', 
-              color: '#6b7280', 
-              fontSize: '0.875rem' 
+            <div style={{
+              marginBottom: '1.5rem',
+              padding: '0.75rem',
+              background: '#f3f4f6',
+              borderRadius: '0.5rem',
+              textAlign: 'center',
+              color: '#6b7280',
+              fontSize: '0.875rem'
             }}>
               {googleConfig === null ? 'Loading...' : 'Google Sign-In not configured'}
             </div>
@@ -580,85 +620,9 @@ const LoginPage = () => {
               guestLogin();
               setGuestLoginTriggered(true);
             }}
-            style={{ marginBottom: '1.5rem' }}
           >
             Continue as Guest
           </Button>
-
-          <Divider>
-            <DividerText>
-              <span>Or</span>
-            </DividerText>
-          </Divider>
-
-          <div>
-            <Label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Phone size={16} />
-              <span>Sign in with Phone</span>
-            </Label>
-            {!otpSent ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <InputWrapper>
-                  <IconWrapper>
-                    <Phone size={18} />
-                  </IconWrapper>
-                  <Input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+1234567890"
-                    hasIcon
-                  />
-                </InputWrapper>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={handlePhoneOTP}
-                  disabled={loading || !phone}
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      <span>Sending...</span>
-                    </>
-                  ) : (
-                    <span>Send Code</span>
-                  )}
-                </Button>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <InfoBox>Code sent to {phone}</InfoBox>
-                <OTPInput
-                  type="text"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="000000"
-                  maxLength={6}
-                />
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    onClick={handlePhoneOTP}
-                    disabled={loading || otp.length !== 6}
-                  >
-                    Verify
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => {
-                      setOtpSent(false);
-                      setOtp('');
-                    }}
-                  >
-                    Resend
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
         </Card>
       </motion.div>
     </Container>
