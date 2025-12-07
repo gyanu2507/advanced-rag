@@ -1,27 +1,36 @@
 services:
+  # FastAPI Backend
   - type: web
-    name: backend
-    env: python
+    name: supernal-backend
+    runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python3 -m uvicorn backend:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn backend:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: PORT
-        value: 10000
-      - key: API_URL
-        value: https://backend.onrender.com
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: GOOGLE_CLIENT_ID
+        sync: false  # Set in Render Dashboard
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false  # Set in Render Dashboard
+      - key: JWT_SECRET
+        generateValue: true  # Auto-generate secret
     healthCheckPath: /health
+    autoDeploy: true
 
+  # React Frontend (Static Site)
   - type: web
-    name: frontend
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    name: supernal-frontend
+    runtime: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
     envVars:
-      - key: PORT
-        value: 10000
-      - key: API_URL
+      - key: VITE_API_URL
         fromService:
-          name: backend
+          name: supernal-backend
           type: web
-          property: host
-
+          property: hostport
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    autoDeploy: true
