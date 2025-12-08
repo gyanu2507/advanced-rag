@@ -1,17 +1,38 @@
 """
 FastAPI backend for the document Q&A system.
 """
+print("=" * 50)
+print("BACKEND.PY: Starting imports...")
+print("=" * 50)
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Depends, Query
+print("✓ FastAPI imported")
+
 from fastapi.middleware.cors import CORSMiddleware
+print("✓ CORS imported")
+
 from pydantic import BaseModel
+print("✓ Pydantic imported")
+
 from typing import Optional, List
 import os
 import tempfile
 import time
 import asyncio
+print("✓ Standard library imports done")
+
 from sqlalchemy.orm import Session
+print("✓ SQLAlchemy imported")
+
+print("⏳ Importing rag_system...")
 from rag_system import RAGSystem
+print("✓ RAGSystem imported")
+
+print("⏳ Importing document_processor...")
 from document_processor import DocumentProcessor
+print("✓ DocumentProcessor imported")
+
+print("⏳ Importing database...")
 from database import (
     init_db, get_db, get_or_create_user, create_document_record,
     create_query_record, get_user_documents, get_user_query_history,
@@ -19,13 +40,19 @@ from database import (
     purge_old_data, purge_all_old_data,
     Document, QueryHistory, User
 )
+print("✓ Database imported")
+
+print("⏳ Importing auth...")
 from auth import (
     authenticate_with_google, verify_jwt_token, initiate_phone_verification,
     verify_phone_otp, generate_jwt_token, create_user_with_email_password,
     authenticate_with_email_password
 )
+print("✓ Auth imported")
 
+print("🎉 All imports successful! Creating FastAPI app...")
 app = FastAPI(title="AI Document Q&A API")
+print("✅ FastAPI app created!")
 
 # Periodic auto-purge (runs every hour)
 import asyncio
