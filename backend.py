@@ -2,7 +2,7 @@
 FastAPI backend for the document Q&A system.
 """
 print("=" * 50)
-print("BACKEND.PY: Starting imports...")
+print("BACKEND.PY: Starting imports (LITE MODE)...")
 print("=" * 50)
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Depends, Query
@@ -14,7 +14,7 @@ print("✓ CORS imported")
 from pydantic import BaseModel
 print("✓ Pydantic imported")
 
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 import os
 import tempfile
 import time
@@ -24,13 +24,30 @@ print("✓ Standard library imports done")
 from sqlalchemy.orm import Session
 print("✓ SQLAlchemy imported")
 
-print("⏳ Importing rag_system...")
-from rag_system import RAGSystem
-print("✓ RAGSystem imported")
+# LAZY IMPORTS - Heavy modules loaded only when needed
+# This allows the server to start on Render's free tier
+RAGSystem = None
+DocumentProcessor = None
 
-print("⏳ Importing document_processor...")
-from document_processor import DocumentProcessor
-print("✓ DocumentProcessor imported")
+def get_rag_system_class():
+    """Lazy import RAGSystem to avoid loading ML models at startup."""
+    global RAGSystem
+    if RAGSystem is None:
+        print("⏳ Loading RAGSystem (first use)...")
+        from rag_system import RAGSystem as _RAGSystem
+        RAGSystem = _RAGSystem
+        print("✓ RAGSystem loaded")
+    return RAGSystem
+
+def get_document_processor_class():
+    """Lazy import DocumentProcessor."""
+    global DocumentProcessor
+    if DocumentProcessor is None:
+        print("⏳ Loading DocumentProcessor (first use)...")
+        from document_processor import DocumentProcessor as _DocumentProcessor
+        DocumentProcessor = _DocumentProcessor
+        print("✓ DocumentProcessor loaded")
+    return DocumentProcessor
 
 print("⏳ Importing database...")
 from database import (
@@ -50,9 +67,9 @@ from auth import (
 )
 print("✓ Auth imported")
 
-print("🎉 All imports successful! Creating FastAPI app...")
+print("🎉 All startup imports done! Creating FastAPI app...")
 app = FastAPI(title="AI Document Q&A API")
-print("✅ FastAPI app created!")
+print("✅ FastAPI app created and bound to port!")
 
 # Periodic auto-purge (runs every hour)
 import asyncio
@@ -117,18 +134,20 @@ app.add_middleware(
 )
 print("✓ CORS configured")
 
-# Store RAG systems per user
-user_rag_systems: dict[str, RAGSystem] = {}
+# Store RAG systems per user (dict type annotation uses Any to avoid import)
+user_rag_systems: dict = {}
 processor = None  # Lazy initialization
 print("✓ Module-level setup complete (lazy initialization enabled)")
 
-def get_rag_system(user_id: str = "default") -> RAGSystem:
+def get_rag_system(user_id: str = "default"):
     """Get or initialize the RAG system for a specific user."""
     if user_id not in user_rag_systems:
         try:
+            # Get the class lazily (this triggers ML model loading)
+            RAGSystemClass = get_rag_system_class()
             # Create user-specific directory for vectorstore
             persist_dir = f"./chroma_db/user_{user_id}"
-            user_rag_systems[user_id] = RAGSystem(persist_directory=persist_dir)
+            user_rag_systems[user_id] = RAGSystemClass(persist_directory=persist_dir)
             print(f"Initialized RAG system for user: {user_id}")
         except Exception as e:
             print(f"Error initializing RAG system for user {user_id}: {e}")
@@ -136,12 +155,13 @@ def get_rag_system(user_id: str = "default") -> RAGSystem:
     return user_rag_systems[user_id]
 
 
-def get_processor() -> DocumentProcessor:
+def get_processor():
     """Get or initialize the document processor (lazy initialization)."""
     global processor
     if processor is None:
         print("⏳ Initializing DocumentProcessor...")
-        processor = DocumentProcessor()
+        DocumentProcessorClass = get_document_processor_class()
+        processor = DocumentProcessorClass()
         print("✓ DocumentProcessor ready")
     return processor
 
