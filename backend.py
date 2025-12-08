@@ -119,7 +119,8 @@ print("✓ CORS configured")
 
 # Store RAG systems per user
 user_rag_systems: dict[str, RAGSystem] = {}
-processor = DocumentProcessor()
+processor = None  # Lazy initialization
+print("✓ Module-level setup complete (lazy initialization enabled)")
 
 def get_rag_system(user_id: str = "default") -> RAGSystem:
     """Get or initialize the RAG system for a specific user."""
@@ -134,6 +135,15 @@ def get_rag_system(user_id: str = "default") -> RAGSystem:
             raise
     return user_rag_systems[user_id]
 
+
+def get_processor() -> DocumentProcessor:
+    """Get or initialize the document processor (lazy initialization)."""
+    global processor
+    if processor is None:
+        print("⏳ Initializing DocumentProcessor...")
+        processor = DocumentProcessor()
+        print("✓ DocumentProcessor ready")
+    return processor
 
 class QueryRequest(BaseModel):
     question: str
@@ -216,7 +226,7 @@ async def upload_document(
     try:
         print(f"   Processing file: {tmp_file_path}")
         # Process document
-        text = processor.process_file(tmp_file_path)
+        text = get_processor().process_file(tmp_file_path)
         print(f"   Extracted {len(text)} characters")
         
         if not text or len(text.strip()) < 10:
@@ -861,5 +871,8 @@ async def login_with_email(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import os
+    port = int(os.environ.get("PORT", 10000))
+    print(f"Starting server on port {port}...")
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
