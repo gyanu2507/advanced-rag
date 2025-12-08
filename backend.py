@@ -59,6 +59,7 @@ async def periodic_purge():
 # Initialize database on startup
 @app.on_event("startup")
 async def startup_event():
+    print("🚀 Starting FastAPI app...")
     init_db()
     print("✓ Database ready")
     # Auto-purge old data on startup (runs automatically)
@@ -76,22 +77,18 @@ async def startup_event():
     # Start periodic purge task (runs every hour automatically)
     asyncio.create_task(periodic_purge())
     print("✓ Periodic auto-purge started (runs every hour automatically)")
+    print("✅ FastAPI app fully initialized and ready!")
 
-# CORS middleware
+# CORS middleware - allow all origins for deployment
+print("⚙️ Configuring CORS...")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=["*"],  # Allow all origins for Render deployment
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+print("✓ CORS configured")
 
 # Store RAG systems per user
 user_rag_systems: dict[str, RAGSystem] = {}
