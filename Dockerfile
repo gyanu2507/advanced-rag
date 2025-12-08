@@ -18,9 +18,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY . .
 
-# Expose ports
-EXPOSE 8000 8501
+# Expose port (Render uses 10000 by default)
+EXPOSE 10000
 
-# Default command (can be overridden)
-CMD ["python3", "-m", "uvicorn", "backend:app", "--host", "0.0.0.0", "--port", "8000"]
+# Set default PORT for Render
+ENV PORT=10000
 
+# Command using shell to expand $PORT
+CMD ["sh", "-c", "uvicorn backend:app --host 0.0.0.0 --port $PORT"]
