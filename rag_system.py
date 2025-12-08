@@ -14,10 +14,23 @@ from dotenv import load_dotenv
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.llms import HuggingFacePipeline
 from langchain_community.vectorstores import Chroma
-from langchain.chains.retrieval_qa.base import RetrievalQA
-from langchain_core.prompts import PromptTemplate
+# Handle different langchain versions
+try:
+    from langchain.chains import RetrievalQA
+except ImportError:
+    try:
+        from langchain.chains.retrieval_qa.base import RetrievalQA
+    except ImportError:
+        from langchain_community.chains import RetrievalQA
+try:
+    from langchain_core.prompts import PromptTemplate
+except ImportError:
+    from langchain.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
+try:
+    from langchain_core.documents import Document
+except ImportError:
+    from langchain.schema import Document
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM
 import torch
 import numpy as np
